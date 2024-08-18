@@ -1,3 +1,5 @@
 venv/
 time_log.csv
 timelog.dbvenv/
+time_log.csv
+timelog.db
