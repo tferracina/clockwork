@@ -1,28 +1,3 @@
-'''
-ENHANCEMENTS:
-
-SQLite database instead of CSV for better data management.
-Support for task categories.
-Ability to add notes to tasks.
-Reporting functionality to view activities within a date range.
-Data visualization of time distribution across categories.
-
-HOW TO USE:
-# Clock in
-python time_tracker.py clockin --activity "physics/study" --category "Study" --notes "Chapter 5 review"
-
-# Clock out
-python time_tracker.py clockout --activity "physics/study"
-
-# Generate a report
-python time_tracker.py report --start_date 2024-01-01 --end_date 2024-12-31
-
-# Visualize time distribution
-python time_tracker.py visualize --start_date 2024-01-01 --end_date 2024-12-31
-
-'''
-
-
 import argparse
 import datetime
 import sqlite3
@@ -45,6 +20,14 @@ def init_db():
                   duration INTEGER,
                   notes TEXT)''')
     conn.commit()
+    conn.close()
+
+def ensure_table_exists():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='timelog'")
+    if not c.fetchone():
+        init_db()
     conn.close()
 
 def clockin(category, activity, task, notes):
@@ -117,42 +100,41 @@ def visualize_time_distribution(start_date, end_date):
         print("No data available for visualization in the specified date range.")
 
 def main():
-    parser = argparse.ArgumentParser(description='Enhanced Time tracking CLI tool')
-    parser.add_argument('action', choices=['clockin', 'clockout', 'report', 'visualize'], help='Action to perform')
-    
-    # Add subparsers for each action
-    subparsers = parser.add_subparsers(dest='action')
+    ensure_table_exists()
 
-    # Clockin subparser
+    parser = argparse.ArgumentParser(description='Enhanced Time tracking CLI tool')
+    subparsers = parser.add_subparsers(dest='action', required=True)
+
+    # Clockin parser
     clockin_parser = subparsers.add_parser('clockin')
-    clockin_parser.add_argument('category', help='Activity category')
-    clockin_parser.add_argument('activity', help='Activity name')
-    clockin_parser.add_argument('task', help='Task name')
+    clockin_parser.add_argument('category', nargs='?', help='Activity category')
+    clockin_parser.add_argument('activity', nargs='?', help='Activity name')
+    clockin_parser.add_argument('task', nargs='?', help='Task name')
     clockin_parser.add_argument('--notes', help='Additional notes for the activity')
 
-    # Clockout subparser
+    # Clockout parser
     clockout_parser = subparsers.add_parser('clockout')
     clockout_parser.add_argument('activity', help='Activity name')
     clockout_parser.add_argument('--notes', help='Additional notes for the activity')
 
-    # Report and Visualize subparsers
-    for action in ['report', 'visualize']:
+    # Report and Visualize parsers
+    for action in ['clocklog', 'clockvis']:
         action_parser = subparsers.add_parser(action)
         action_parser.add_argument('start_date', help='Start date (YYYY-MM-DD)')
         action_parser.add_argument('end_date', help='End date (YYYY-MM-DD)')
 
     args = parser.parse_args()
-    
+
     if args.action == 'clockin':
+        if not (args.category and args.activity and args.task):
+            parser.error("For clockin, you must provide category, activity, and task")
         clockin(args.category, args.activity, args.task, args.notes)
     elif args.action == 'clockout':
         clockout(args.activity, args.notes)
-    elif args.action == 'report':
+    elif args.action == 'clocklog':
         generate_report(args.start_date, args.end_date)
-    elif args.action == 'visualize':
+    elif args.action == 'clockvis':
         visualize_time_distribution(args.start_date, args.end_date)
 
 if __name__ == '__main__':
-    if not os.path.exists(DB_FILE):
-        init_db()
     main()
