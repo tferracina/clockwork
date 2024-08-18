@@ -1,6 +1,6 @@
-# Clocker: simple CLI time tracker
+# Clocker: simple CLI time tracker (v1.0.0)
 
-An easy way to track your time spent on different tasks.
+Clocker is a simple command-line interface (CLI) tool designed to help you track your time spent on different tasks. Whether you’re working on personal projects, studying, or managing work tasks, Clocker makes it simple to log and visualize your time.
 
 ## Installation
 
@@ -15,43 +15,64 @@ An easy way to track your time spent on different tasks.
 If you prefer to run the script directly, you'll need Python installed on your system.
 
 1. Clone this repository or download the source code.
-2. Install the required dependencies: `pip install -r requirements.txt`
+    `git clone https://github.com/tferracina/timetrack.git`
+2. Navigate to the cloned directory.
+3. Install the required dependencies.
+    `pip install -r requirements.txt`
+
+
+## File Storage
+
+Clocker stores its data in a SQLite database located in a .clocker directory in your home folder. The file timelog.db will be created to keep track of your logs.
 
 
 ## Usage
 
 If you're using the executable, replace `python clocker.py` with the path to the executable in the following commands.
 
-The command `clockin` is how you start tracking the time. You must provide a category, activity, and a task. In addition, there is also a section for notes to be provided.
+### clockin
+
+The command `clockin` is how you start tracking the time. You must provide a category, activity, and a task. Optionally, add notes with `--notes`.
 ```
-clockin category activity task --notes:(optional)
+clockin category activity task --notes "optional notes"
 ```
-Some examples:
+Examples:
 ```
 clockin study exercise physics
 clockin coding timetrack testing --notes "test"
 clockin work research image-preprocessing-tools
 ```
 
-When you're done, stop the clock by using the `clockout` command, which also has an optional section for notes.
+### clockout
+
+The clock is stopped with `clockout` command. Provide the activity, and again, optionally add notes.
 ```
-clockout --notes:(optional)
+clockout activity --notes "optional notes"
+```
+Example:
+```
+clockout physics --notes "finished exercise set 3"
 ```
 
-To see the log of your hours, you can use the `clocklog` command.
+### clocklog
+
+Displays the log of hours for a specific date range. Format in YYYY-MM-DD
 ```
 clocklog start-date end-date
 clocklog 2024-01-01 2024-12-31
 ```
 
-To see a visualization of your hours, use the `clockvis` command.
+### clockvis
+
+Saves a visualization of your hours for a specified date range. Format in YYYY-MM-DD
+In addition, a category can be specified with --category
 ```
 clockvis stard-date end-date
-clockvis 2024-01-01 2024-12-31
+clockvis 2024-01-01 2024-12-31 --category coding
 ```
 
 
-To be implemented:
+### Future Features:
 ```
 clocklog daily
 clocklog weekly
@@ -77,3 +98,11 @@ source ~/.zshrc
 ```
 
 This step is optional but can make the commands shorter and easier to use.
+
+## Contact and Support
+
+For issues or support, please open an issue on the [Github Issues](https://github.com/tferracina/timetrack/issues) page.
+
+## License
+
+This project is licensed under the MIT License.
