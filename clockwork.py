@@ -1,5 +1,5 @@
 # Description: A simple CLI tool for tracking time spent on different activities.
-# Clockwork v1.0.0
+# Clockwork v1.0.1
 
 import argparse
 import datetime

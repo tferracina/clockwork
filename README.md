@@ -1,13 +1,13 @@
-# Clocker: simple CLI time tracker (v1.0.0)
+# clockwork: simple CLI time tracker (v1.0.1)
 
-Clocker is a simple command-line interface (CLI) tool designed to help you track your time spent on different tasks. Whether you’re working on personal projects, studying, or managing work tasks, Clocker makes it simple to log and visualize your time.
+clockwork is a simple command-line interface (CLI) tool designed to help you track your time spent on different tasks. Whether you’re working on personal projects, studying, or managing work tasks, clockwork makes it simple to log and visualize your time.
 
 ## Installation
 
 ### Option 1: Using the Executable (Recommended for non-technical users)
 
-1. Go to the [Releases](https://github.com/tferracina/timetrack/releases) page of this repository.
-2. Download the latest version of the `clocker` executable for your operating system.
+1. Go to the [Releases](https://github.com/tferracina/clockwork/releases) page of this repository.
+2. Download the latest version of the `clockwork` executable for your operating system. (all platforms available now)
 3. Place the executable in a convenient location on your computer.
 
 ### Option 2: Running from Source
@@ -23,12 +23,12 @@ If you prefer to run the script directly, you'll need Python installed on your s
 
 ## File Storage
 
-Clocker stores its data in a SQLite database located in a .clocker directory in your home folder. The file timelog.db will be created to keep track of your logs.
+clockwork stores its data in a SQLite database located in a .clockwork directory in your home folder. The file timelog.db will be created to keep track of your logs.
 
 
 ## Usage
 
-If you're using the executable, replace `python clocker.py` with the path to the executable in the following commands.
+If you're using the executable, replace `python clockwork.py` with the path to the executable in the following commands.
 
 ### clockin
 
@@ -56,7 +56,7 @@ clockout physics --notes "finished exercise set 3"
 
 ### clocklog
 
-Displays the log of hours for a specific date range. Format in YYYY-MM-DD
+Displays the log of your tracked hours. A date range can be provided, if not, your full log will be returned. Format in YYYY-MM-DD
 ```
 clocklog start-date end-date
 clocklog 2024-01-01 2024-12-31
@@ -69,6 +69,15 @@ In addition, a category can be specified with --category
 ```
 clockvis stard-date end-date
 clockvis 2024-01-01 2024-12-31 --category coding
+```
+
+### clockcsv
+
+Download your logs in csv format with a specified date range. Format in YYYY-MM-DD
+In addition, a category can be specified with --category
+```
+clockcsv stard-date end-date
+clockcsv 2024-01-01 2024-12-31 --category coding
 ```
 
 
@@ -90,7 +99,7 @@ open ~/.zshrc
 ```
 Then add an alias as:
 ```
-alias clockin='path/to/python path/to/clocker.py clocklog'
+alias clockin='path/to/python path/to/clockwork.py clocklog'
 ```
 And finally restart your terminal with:
 ```
@@ -101,7 +110,7 @@ This step is optional but can make the commands shorter and easier to use.
 
 ## Contact and Support
 
-For issues or support, please open an issue on the [Github Issues](https://github.com/tferracina/timetrack/issues) page.
+For issues or support, please open an issue on the [Github Issues](https://github.com/tferracina/clockwork/issues) page.
 
 ## License
 
