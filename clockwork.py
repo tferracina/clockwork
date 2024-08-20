@@ -12,6 +12,7 @@ import subprocess
 from tabulate import tabulate
 import matplotlib.pyplot as plt
 from pathlib import Path
+import random
 
 # Define the paths
 home_dir = Path.home()
@@ -176,6 +177,14 @@ def open_file(filepath):
     else:  # linux variants
         subprocess.call(('xdg-open', filepath))
 
+try:
+    from config import COLOR_DICT
+except ImportError:
+    COLOR_DICT = {}
+
+def generate_random_color():
+    return "#{:06x}".format(random.randint(0, 0xFFFFFF))
+
 def visualize_time_distribution(start_date, end_date, category=None, open_image=True):
     """Visualize the time distribution for the activities between the given dates."""
     if not (validate_date(start_date) and validate_date(end_date)):
@@ -209,11 +218,17 @@ def visualize_time_distribution(start_date, end_date, category=None, open_image=
                 print("No data available for visualization in the specified date range and/or category.")
                 return
             plt.figure(figsize=(10, 7))
-            plt.pie(durations, labels=labels, autopct='%1.1f%%')
+            colors = []
+            for label in labels:
+                if label not in COLOR_DICT:
+                    COLOR_DICT[label] = generate_random_color()
+                colors.append(COLOR_DICT[label])
+            plt.pie(durations, labels=labels, autopct='%1.1f%%', shadow=True, colors=colors)
             title = f"Time Distribution ({start_date} to {end_date})"
             if category:
                 title += f" for category: {category}"
             plt.title(title)
+            plt.legend(loc="best")
             plt.axis('equal')
             plt.savefig(fig_path)
             plt.close()

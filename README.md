@@ -66,9 +66,13 @@ clocklog 2024-01-01 2024-12-31
 
 Saves a visualization of your hours for a specified date range. Format in YYYY-MM-DD
 In addition, a category can be specified with --category
+
+In a config.py file, it is possible to create a COLOR_DICT to specify what colors you prefer for different categories.
 ```
 clockvis stard-date end-date
 clockvis 2024-01-01 2024-12-31 --category coding
+
+COLOR_DICT = {"school": "green", "personal": "yellow"}
 ```
 
 ### clockcsv
@@ -99,7 +103,7 @@ open ~/.zshrc
 ```
 Then add an alias as:
 ```
-alias clockin='path/to/python path/to/clockwork.py clocklog'
+alias clockin='path/to/python path/to/clockwork.py clockin'
 ```
 And finally restart your terminal with:
 ```
