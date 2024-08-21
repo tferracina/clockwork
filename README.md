@@ -4,18 +4,12 @@ clockwork is a simple command-line interface (CLI) tool designed to help you tra
 
 ## Installation
 
-### Option 1: Using the Executable (Recommended for non-technical users)
+### Running from Source
 
-1. Go to the [Releases](https://github.com/tferracina/clockwork/releases) page of this repository.
-2. Download the latest version of the `clockwork` executable for your operating system. (all platforms available now)
-3. Place the executable in a convenient location on your computer.
-
-### Option 2: Running from Source
-
-If you prefer to run the script directly, you'll need Python installed on your system.
+You'll need Python installed on your system for this.
 
 1. Clone this repository or download the source code.
-    `git clone https://github.com/tferracina/timetrack.git`
+    `git clone https://github.com/tferracina/clockwork.git`
 2. Navigate to the cloned directory.
 3. Install the required dependencies.
     `pip install -r requirements.txt`
