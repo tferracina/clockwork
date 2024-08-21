@@ -1,5 +1,7 @@
-# Description: A simple CLI tool for tracking time spent on different activities.
-# Clockwork v1.0.1
+"""
+Description: A simple CLI tool for tracking time spent on different activities.
+Clockwork v1.0.1
+"""
 
 import argparse
 import datetime
@@ -9,10 +11,10 @@ import sys
 import os
 import re
 import subprocess
+import random
+from pathlib import Path
 from tabulate import tabulate
 import matplotlib.pyplot as plt
-from pathlib import Path
-import random
 
 # Define the paths
 home_dir = Path.home()
@@ -22,7 +24,9 @@ temp_dir = Path(tempfile.gettempdir())
 DB_FILE = clockwork_dir / "timelog.db"
 
 def get_db_path():
+    """Get the path to the database file."""
     return str(DB_FILE)
+
 
 def init_db():
     """Initialize the database by creating necessary tables if they do not exist."""
@@ -30,13 +34,12 @@ def init_db():
     try:
 
         Path(get_db_path()).parent.mkdir(parents=True, exist_ok=True)
-        
         with sqlite3.connect(get_db_path()) as conn:
             c = conn.cursor()
             c.execute('''CREATE TABLE IF NOT EXISTS timelog
-                         (id INTEGER PRIMARY KEY, 
+                         (id INTEGER PRIMARY KEY,
                           category TEXT,
-                          activity TEXT, 
+                          activity TEXT,
                           task TEXT,
                           start_time TIMESTAMP,
                           end_time TIMESTAMP,
@@ -47,6 +50,7 @@ def init_db():
         print(f"An error occurred while initializing the database: {e}")
     except OSError as e:
         print(f"An error occurred while creating the directory: {e}")
+
 
 def ensure_table_exists():
     """Check if the timelog table exists, and initialize the database if it does not."""
@@ -59,13 +63,15 @@ def ensure_table_exists():
     except sqlite3.Error as e:
         print(f"An error occurred while checking the table existence: {e}")
 
+
 def sanitize_input(input_string):
     """Sanitize input to prevent SQL injection."""
     return re.sub(r'[^\w\s-]', '', input_string)
 
+
 def clockin(category, activity, task, notes=None):
-    """Clock in for the given activity, provide category, activity, and task + (optionally notes)."""
-    try: 
+    """Clock in for the given activity, provide category, activity, and task + (optionally notes)"""
+    try:
         category = sanitize_input(category)
         activity = sanitize_input(activity)
         task = sanitize_input(task)
@@ -80,6 +86,7 @@ def clockin(category, activity, task, notes=None):
     except sqlite3.Error as e:
         print(f"An error occurred while clocking in: {e}")
 
+
 def clockout(activity, notes=None):
     """Clock out for the given activity, provide activity name + (optionally notes)."""
     try:
@@ -90,11 +97,11 @@ def clockout(activity, notes=None):
             c = conn.cursor()
             current_time = datetime.datetime.now()
 
-            c.execute("SELECT COUNT(*) FROM timelog WHERE activity = ? AND end_time IS NULL", (activity,))
+            c.execute("SELECT COUNT(*) FROM timelog WHERE activity = ? AND end_time IS NULL",
+                       (activity,))
             if c.fetchone()[0] == 0:
                 print(f"No active clock-in found for {activity}")
                 return
-            
             c.execute("SELECT id, start_time FROM timelog WHERE activity = ? AND end_time IS NULL ORDER BY start_time DESC LIMIT 1", (activity,))
             result = c.fetchone()
 
@@ -110,12 +117,12 @@ def clockout(activity, notes=None):
                     c.execute("UPDATE timelog SET end_time = ?, duration = ? WHERE id = ?",
                               (current_time, duration, activity_id))
                 conn.commit()
-                print(f"Clocked out from {activity} at {current_time.strftime('%H:%M:%S')}")
-                print(f"Duration: {datetime.timedelta(seconds=duration)}")
+                print(f"Clocked out from {activity} at {current_time.strftime('%H:%M:%S')} | Duration: {datetime.timedelta(seconds=duration)}")
             else:
                 print(f"No active clock-in found for {activity}")
     except sqlite3.Error as e:
         print(f"An error occurred while clocking out: {e}")
+
 
 def validate_date(date_text):
     """Validate date format as YYYY-MM-DD."""
@@ -124,6 +131,7 @@ def validate_date(date_text):
         return True
     except ValueError:
         return False
+
 
 def generate_report(start_date=None, end_date=None):
     """Generate a report for the activities between the given dates"""
@@ -145,19 +153,25 @@ def generate_report(start_date=None, end_date=None):
         print("Error: Invalid date format. Please use YYYY-MM-DD.")
         return
 
-    try: 
+    try:
         with sqlite3.connect(get_db_path()) as conn:
             c = conn.cursor()
             if result:
-                c.execute("""SELECT id, category, activity, task, start_time, end_time, duration, notes 
-                            FROM timelog 
-                            WHERE date(start_time) BETWEEN ? AND ?
-                            ORDER BY start_time""", result)
+                c.execute("""SELECT id, category, activity, task,
+                                    strftime('%Y-%m-%d %H:%M:%S', start_time) AS start_time,
+                                    strftime('%Y-%m-%d %H:%M:%S', end_time) AS end_time,
+                                    duration, notes
+                             FROM timelog
+                             WHERE date(start_time) BETWEEN ? AND ?
+                             ORDER BY start_time""", result)
             else:
-                c.execute("""SELECT id, category, activity, task, start_time, end_time, duration, notes 
-                            FROM timelog 
-                            WHERE date(start_time) BETWEEN ? AND ?
-                            ORDER BY start_time""", (start_date, end_date))
+                c.execute("""SELECT id, category, activity, task,
+                                    strftime('%Y-%m-%d %H:%M:%S', start_time) AS start_time,
+                                    strftime('%Y-%m-%d %H:%M:%S', end_time) AS end_time,
+                                    duration, notes
+                             FROM timelog
+                             WHERE date(start_time) BETWEEN ? AND ?
+                             ORDER BY start_time""", (start_date, end_date))
             activities = c.fetchall()
 
         if activities:
@@ -169,7 +183,9 @@ def generate_report(start_date=None, end_date=None):
     except sqlite3.Error as e:
         print(f"An error occurred while fetching the report: {e}")
 
+
 def open_file(filepath):
+    """Open file depending on platform."""
     if sys.platform.startswith('darwin'):  # macOS
         subprocess.call(('open', filepath))
     elif sys.platform.startswith('win'):   # Windows
@@ -182,30 +198,33 @@ try:
 except ImportError:
     COLOR_DICT = {}
 
+
 def generate_random_color():
-    return "#{:06x}".format(random.randint(0, 0xFFFFFF))
+    """Generate a random color code for the COLOR_DICT."""
+    return f"#{random.randint(0, 0xFFFFFF):06x}"
+
 
 def visualize_time_distribution(start_date, end_date, category=None, open_image=True):
     """Visualize the time distribution for the activities between the given dates."""
     if not (validate_date(start_date) and validate_date(end_date)):
         print("Error: Invalid date format. Please use YYYY-MM-DD.")
         return
-    
+
     try:
         with sqlite3.connect(get_db_path()) as conn:
             c = conn.cursor()
             if category:
                 category = sanitize_input(category)
-                c.execute("""SELECT activity, SUM(duration) 
-                            FROM timelog 
-                            WHERE date(start_time) BETWEEN ? AND ? 
+                c.execute("""SELECT activity, SUM(duration)
+                            FROM timelog
+                            WHERE date(start_time) BETWEEN ? AND ?
                             AND duration IS NOT NULL
                             AND category = ?
                             GROUP BY activity""", (start_date, end_date, category))
             else:
-                c.execute("""SELECT category, SUM(duration) 
-                            FROM timelog 
-                            WHERE date(start_time) BETWEEN ? AND ? 
+                c.execute("""SELECT category, SUM(duration)
+                            FROM timelog
+                            WHERE date(start_time) BETWEEN ? AND ?
                             AND duration IS NOT NULL
                             GROUP BY category""", (start_date, end_date))
             data = c.fetchall()
@@ -243,6 +262,7 @@ def visualize_time_distribution(start_date, end_date, category=None, open_image=
     except subprocess.SubprocessError as e:
         print(f"An error occurred while opening the image: {e}")
 
+
 def generate_csv(start_date, end_date, category=None):
     """Generate a CSV file for the activities between the given dates."""
     if not (validate_date(start_date) and validate_date(end_date)):
@@ -254,16 +274,16 @@ def generate_csv(start_date, end_date, category=None):
             c = conn.cursor()
             if category:
                 category = sanitize_input(category)
-                c.execute("""SELECT id, category, activity, task, start_time, end_time, duration, notes 
-                            FROM timelog 
-                            WHERE date(start_time) BETWEEN ? AND ? 
+                c.execute("""SELECT id, category, activity, task, start_time, end_time, duration, notes
+                            FROM timelog
+                            WHERE date(start_time) BETWEEN ? AND ?
                             AND duration IS NOT NULL
                             AND category = ?
                             ORDER BY id""", (start_date, end_date, category))
             else:
-                c.execute("""SELECT id, category, activity, task, start_time, end_time, duration, notes 
-                            FROM timelog 
-                            WHERE date(start_time) BETWEEN ? AND ? 
+                c.execute("""SELECT id, category, activity, task, start_time, end_time, duration, notes
+                            FROM timelog
+                            WHERE date(start_time) BETWEEN ? AND ?
                             AND duration IS NOT NULL
                             ORDER BY id""", (start_date, end_date))
             activities = c.fetchall()
@@ -275,7 +295,7 @@ def generate_csv(start_date, end_date, category=None):
                 csv_data.append(",".join([str(i) for i in a]))
             csv_data = "\n".join(csv_data)
             csv_file = temp_dir / f"timelog_{start_date}_{end_date}{'_' + category if category else ''}.csv"
-            with open(csv_file, "w") as f:
+            with open(csv_file, "w", newline="", encoding="utf-8") as f:
                 f.write(csv_data)
             print(f"CSV file generated: {csv_file}")
             open_file(str(csv_file))
@@ -286,6 +306,7 @@ def generate_csv(start_date, end_date, category=None):
 
 
 def main():
+    """Main function which parses the CL arguments and calls the appropriate functions."""
     ensure_table_exists()
 
     parser = argparse.ArgumentParser(description='Enhanced Time tracking CLI tool')
@@ -333,6 +354,7 @@ def main():
         visualize_time_distribution(args.start_date, args.end_date, args.category, args.open)
     elif args.action == 'clockcsv':
         generate_csv(args.start_date, args.end_date, args.category)
+
 
 if __name__ == '__main__':
     main()
