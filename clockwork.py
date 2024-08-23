@@ -2,80 +2,44 @@
 Description: A simple CLI tool for tracking time spent on different activities.
 Clockwork v1.0.1
 """
-
-import argparse
 import datetime
 import sqlite3
 import tempfile
-import sys
-import os
-import re
 import subprocess
-import random
 from pathlib import Path
+from datetime import datetime, timedelta
+import click
 from tabulate import tabulate
 import matplotlib.pyplot as plt
 
-# Define the paths
-home_dir = Path.home()
-clockwork_dir = home_dir / ".clockwork"
+from utils import (get_db_path, ensure_table_exists, validate_input,
+                   get_date_range, generate_random_color, open_file,
+                   load_config, save_config)
+
+
+# Define temp paths
 temp_dir = Path(tempfile.gettempdir())
+config = load_config()
 
-DB_FILE = clockwork_dir / "timelog.db"
-
-def get_db_path():
-    """Get the path to the database file."""
-    return str(DB_FILE)
-
-
-def init_db():
-    """Initialize the database by creating necessary tables if they do not exist."""
-
-    try:
-
-        Path(get_db_path()).parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(get_db_path()) as conn:
-            c = conn.cursor()
-            c.execute('''CREATE TABLE IF NOT EXISTS timelog
-                         (id INTEGER PRIMARY KEY,
-                          category TEXT,
-                          activity TEXT,
-                          task TEXT,
-                          start_time TIMESTAMP,
-                          end_time TIMESTAMP,
-                          duration INTEGER,
-                          notes TEXT)''')
-            conn.commit()
-    except sqlite3.Error as e:
-        print(f"An error occurred while initializing the database: {e}")
-    except OSError as e:
-        print(f"An error occurred while creating the directory: {e}")
+@click.group()
+def clockwork():
+    """A simple CLI tool for tracking time spent on different activities."""
 
 
-def ensure_table_exists():
-    """Check if the timelog table exists, and initialize the database if it does not."""
-    try:
-        with sqlite3.connect(get_db_path()) as conn:
-            c = conn.cursor()
-            c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='timelog'")
-            if not c.fetchone():
-                init_db()
-    except sqlite3.Error as e:
-        print(f"An error occurred while checking the table existence: {e}")
-
-
-def sanitize_input(input_string):
-    """Sanitize input to prevent SQL injection."""
-    return re.sub(r'[^\w\s-]', '', input_string)
-
-
+@click.command()
+@click.argument('category')
+@click.argument('activity')
+@click.argument('task')
+@click.option('--notes', help='Additional notes for the activity', default=None)
 def clockin(category, activity, task, notes=None):
     """Clock in for the given activity, provide category, activity, and task + (optionally notes)"""
+    ensure_table_exists()
+
     try:
-        category = sanitize_input(category)
-        activity = sanitize_input(activity)
-        task = sanitize_input(task)
-        notes = sanitize_input(notes) if notes else None
+        category = validate_input(category)
+        activity = validate_input(activity)
+        task = validate_input(task)
+        notes = validate_input(notes) if notes else None
         with sqlite3.connect(get_db_path()) as conn:
             c = conn.cursor()
             current_time = datetime.datetime.now()
@@ -83,15 +47,20 @@ def clockin(category, activity, task, notes=None):
                       (category, activity, task, current_time, notes))
             conn.commit()
         print(f"Clocked in for {activity} ({task}) at {current_time.strftime('%H:%M:%S')}")
-    except sqlite3.Error as e:
+    except (sqlite3.Error, ValueError) as e:
         print(f"An error occurred while clocking in: {e}")
 
 
+@click.command()
+@click.argument('activity')
+@click.option('--notes', help='Additional notes for the activity', default=None)
 def clockout(activity, notes=None):
     """Clock out for the given activity, provide activity name + (optionally notes)."""
+    ensure_table_exists()
+
     try:
-        activity = sanitize_input(activity)
-        notes = sanitize_input(notes) if notes else None
+        activity = validate_input(activity)
+        notes = validate_input(notes) if notes else None
 
         with sqlite3.connect(get_db_path()) as conn:
             c = conn.cursor()
@@ -124,59 +93,39 @@ def clockout(activity, notes=None):
         print(f"An error occurred while clocking out: {e}")
 
 
-def validate_date(date_text):
-    """Validate date format as YYYY-MM-DD."""
-    try:
-        datetime.datetime.strptime(date_text, '%Y-%m-%d')
-        return True
-    except ValueError:
-        return False
+RANGE = {
+    "d": "daily",
+    "w": "weekly",
+    "m": "monthly",
+    "y": "yearly"
+}
 
-
-def generate_report(start_date=None, end_date=None):
+@click.command()
+@click.argument('date_range', type=click.Choice(RANGE.keys()), default="w")
+#@click.option('--start-date', type=click.DateTime(formats=["%Y-%m-%d"]))
+#@click.option('--end-date', type=click.DateTime(formats=["%Y-%m-%d"]))
+def clocklog(date_range):
     """Generate a report for the activities between the given dates"""
+    ensure_table_exists()
 
-    # If no dates are provided, fetch the earliest and latest dates in the database
-    if start_date is None and end_date is None:
-        with sqlite3.connect(get_db_path()) as conn:
-            c = conn.cursor()
-            c.execute("SELECT MIN(date(start_time)), MAX(date(end_time)) FROM timelog")
-            result = c.fetchone()
-            start_date, end_date = result
-            if not (start_date and end_date):
-                print("No records found in the database.")
-                return
-    else:
-        result = None
-
-    if not (validate_date(start_date) and validate_date(end_date)):
-        print("Error: Invalid date format. Please use YYYY-MM-DD.")
-        return
+    start_date, end_date = get_date_range(date_range)
 
     try:
         with sqlite3.connect(get_db_path()) as conn:
             c = conn.cursor()
-            if result:
-                c.execute("""SELECT id, category, activity, task,
-                                    strftime('%Y-%m-%d %H:%M:%S', start_time) AS start_time,
-                                    strftime('%Y-%m-%d %H:%M:%S', end_time) AS end_time,
-                                    duration, notes
-                             FROM timelog
-                             WHERE date(start_time) BETWEEN ? AND ?
-                             ORDER BY start_time""", result)
-            else:
-                c.execute("""SELECT id, category, activity, task,
-                                    strftime('%Y-%m-%d %H:%M:%S', start_time) AS start_time,
-                                    strftime('%Y-%m-%d %H:%M:%S', end_time) AS end_time,
-                                    duration, notes
-                             FROM timelog
-                             WHERE date(start_time) BETWEEN ? AND ?
-                             ORDER BY start_time""", (start_date, end_date))
+            c.execute("""SELECT id, category, activity, task,
+                                strftime('%Y-%m-%d %H:%M:%S', start_time) AS start_time,
+                                strftime('%Y-%m-%d %H:%M:%S', end_time) AS end_time,
+                                duration, notes
+                         FROM timelog
+                         WHERE date(start_time) BETWEEN ? AND ?
+                         ORDER BY start_time""", (start_date, end_date))
             activities = c.fetchall()
 
         if activities:
             headers = ["ID", "CATEGORY", "ACTIVITY", "TASK", "START_TIME", "END_TIME", "DURATION", "NOTES"]
-            table = [[a[0], a[1], a[2], a[3], a[4], a[5] or "Ongoing", str(datetime.timedelta(seconds=a[6])) if a[6] else "N/A", a[7]] for a in activities]
+            table = [[a[0], a[1], a[2], a[3], a[4], a[5] or "Ongoing", str(timedelta(seconds=a[6])) if a[6] else "N/A", a[7]] for a in activities]
+            print(f"\nReport for {RANGE[date_range]} activities ({start_date} to {end_date}):")
             print(tabulate(table, headers=headers, tablefmt="grid"))
         else:
             print("No activities found in the specified date range.")
@@ -184,37 +133,22 @@ def generate_report(start_date=None, end_date=None):
         print(f"An error occurred while fetching the report: {e}")
 
 
-def open_file(filepath):
-    """Open file depending on platform."""
-    if sys.platform.startswith('darwin'):  # macOS
-        subprocess.call(('open', filepath))
-    elif sys.platform.startswith('win'):   # Windows
-        os.startfile(filepath)
-    else:  # linux variants
-        subprocess.call(('xdg-open', filepath))
-
-try:
-    from config import COLOR_DICT
-except ImportError:
-    COLOR_DICT = {}
+COLOR_DICT = config.get('color_dict', {})
 
 
-def generate_random_color():
-    """Generate a random color code for the COLOR_DICT."""
-    return f"#{random.randint(0, 0xFFFFFF):06x}"
-
-
-def visualize_time_distribution(start_date, end_date, category=None, open_image=True):
+@click.command()
+@click.option('--start-date', type=click.DateTime(formats=["%Y-%m-%d"]))
+@click.option('--end-date', type=click.DateTime(formats=["%Y-%m-%d"]))
+@click.option('--category', help='Optional category filter')
+def clockvis(start_date, end_date, category=None):
     """Visualize the time distribution for the activities between the given dates."""
-    if not (validate_date(start_date) and validate_date(end_date)):
-        print("Error: Invalid date format. Please use YYYY-MM-DD.")
-        return
+    ensure_table_exists()
 
     try:
         with sqlite3.connect(get_db_path()) as conn:
             c = conn.cursor()
             if category:
-                category = sanitize_input(category)
+                category = validate_input(category)
                 c.execute("""SELECT activity, SUM(duration)
                             FROM timelog
                             WHERE date(start_time) BETWEEN ? AND ?
@@ -252,9 +186,7 @@ def visualize_time_distribution(start_date, end_date, category=None, open_image=
             plt.savefig(fig_path)
             plt.close()
             print(f"Time distribution saved to {fig_path}")
-
-            if open_image:
-                open_file(str(fig_path))
+            open_file(str(fig_path))
         else:
             print("No data available for visualization in the specified date range and/or category.")
     except sqlite3.Error as e:
@@ -263,17 +195,23 @@ def visualize_time_distribution(start_date, end_date, category=None, open_image=
         print(f"An error occurred while opening the image: {e}")
 
 
-def generate_csv(start_date, end_date, category=None):
+config['color_dict'] = COLOR_DICT
+save_config(config)
+
+
+@click.command()
+@click.argument('start_date', required=True, type=click.DateTime(formats=["%Y-%m-%d"]))
+@click.argument('end_date', required=True, type=click.DateTime(formats=["%Y-%m-%d"]))
+@click.option('--category', help='Optional category filter')
+def clockcsv(start_date, end_date, category=None):
     """Generate a CSV file for the activities between the given dates."""
-    if not (validate_date(start_date) and validate_date(end_date)):
-        print("Error: Invalid date format. Please use YYYY-MM-DD.")
-        return
+    ensure_table_exists()
 
     try:
         with sqlite3.connect(get_db_path()) as conn:
             c = conn.cursor()
             if category:
-                category = sanitize_input(category)
+                category = validate_input(category)
                 c.execute("""SELECT id, category, activity, task, start_time, end_time, duration, notes
                             FROM timelog
                             WHERE date(start_time) BETWEEN ? AND ?
@@ -305,56 +243,13 @@ def generate_csv(start_date, end_date, category=None):
         print(f"An error occurred while generating the CSV file: {e}")
 
 
-def main():
-    """Main function which parses the CL arguments and calls the appropriate functions."""
-    ensure_table_exists()
-
-    parser = argparse.ArgumentParser(description='Enhanced Time tracking CLI tool')
-    subparsers = parser.add_subparsers(dest='action', required=True)
-
-    # Clockin parser
-    clockin_parser = subparsers.add_parser('clockin')
-    clockin_parser.add_argument('category', nargs='?', help='Activity category, examples: work, study, personal, etc.')
-    clockin_parser.add_argument('activity', nargs='?', help='Activity name, examples: coding, physics, reading etc.')
-    clockin_parser.add_argument('task', nargs='?', help='Task name: project-task, exercise-set-3, etc.')
-    clockin_parser.add_argument('--notes', help='Additional notes for the activity')
-
-    # Clockout parser
-    clockout_parser = subparsers.add_parser('clockout')
-    clockout_parser.add_argument('activity', help='Activity name')
-    clockout_parser.add_argument('--notes', help='Additional notes for the activity')
-
-    # Report parser
-    report_parser = subparsers.add_parser('clocklog')
-    report_parser.add_argument('start_date', nargs='?', help='Start date (YYYY-MM-DD)')
-    report_parser.add_argument('end_date', nargs='?', help='End date (YYYY-MM-DD)')
-
-    # Visualize parser
-    vis_parser = subparsers.add_parser('clockvis')
-    vis_parser.add_argument('start_date', help='Start date (YYYY-MM-DD)')
-    vis_parser.add_argument('end_date', help='End date (YYYY-MM-DD)')
-    vis_parser.add_argument('--category', help='Optional category filter')
-    vis_parser.add_argument('--closed', action='store_false', dest='open', help='Do not open the generated figure')
-
-    # Csv parser
-    csv_parser = subparsers.add_parser('clockcsv')
-    csv_parser.add_argument('start_date', help='Start date (YYYY-MM-DD)')
-    csv_parser.add_argument('end_date', help='End date (YYYY-MM-DD)')
-    csv_parser.add_argument('--category', help='Optional category filter')
-
-    args = parser.parse_args()
-
-    if args.action == 'clockin':
-        clockin(args.category, args.activity, args.task, args.notes)
-    elif args.action == 'clockout':
-        clockout(args.activity, args.notes)
-    elif args.action == 'clocklog':
-        generate_report(args.start_date, args.end_date)
-    elif args.action == 'clockvis':
-        visualize_time_distribution(args.start_date, args.end_date, args.category, args.open)
-    elif args.action == 'clockcsv':
-        generate_csv(args.start_date, args.end_date, args.category)
+clockwork.add_command(clockin)
+clockwork.add_command(clockout)
+clockwork.add_command(clocklog)
+clockwork.add_command(clockvis)
+clockwork.add_command(clockcsv)
 
 
 if __name__ == '__main__':
-    main()
+    ensure_table_exists()
+    clockwork()

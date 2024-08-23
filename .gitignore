@@ -1,25 +1,14 @@
 venv/
-timelog.dbvenv/
-timelog.db
 .DS_Store
 
-# PyInstaller
-build/
-dist/
-*.spec
 
-#Environemnt
-.env
+clockwork.egg-info/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
 
-# Testing
-clocker_testing.py
-
 image.png
-config.py
 
 .vscode/
