@@ -62,6 +62,16 @@ Date range options:
 
 If no date range is specified, it defaults to weekly.
 
+
+### clocksum
+
+Displays the total duration for each category. A date range can be specified using a single-letter code.
+```
+python clockwork.py clocksum [date_range]
+```
+Same date range options as clocklog. If no date range is specified, it defaults to weekly.
+
+
 ### clockvis
 
 Saves a visualization of your hours for a specified date range. You must provide start and end dates in YYYY-MM-DD format.

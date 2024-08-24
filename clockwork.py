@@ -8,6 +8,7 @@ import tempfile
 import subprocess
 from pathlib import Path
 from datetime import datetime, timedelta
+from collections import defaultdict
 import click
 from tabulate import tabulate
 import matplotlib.pyplot as plt
@@ -133,6 +134,42 @@ def clocklog(date_range):
         print(f"An error occurred while fetching the report: {e}")
 
 
+@click.command()
+@click.argument('date_range', type=click.Choice(RANGE.keys()), default="w")
+def clocksum(date_range):
+    """Generate a summary report of activities by category between the given dates"""
+    ensure_table_exists()
+
+    start_date, end_date = get_date_range(date_range)
+
+    try:
+        with sqlite3.connect(get_db_path()) as conn:
+            c = conn.cursor()
+            c.execute("""SELECT category, SUM(duration) as total_duration
+                         FROM timelog
+                         WHERE date(start_time) BETWEEN ? AND ?
+                         GROUP BY category
+                         ORDER BY total_duration DESC""", (start_date, end_date))
+            summary = c.fetchall()
+
+        if summary:
+            headers = ["CATEGORY", "TOTAL DURATION"]
+            summary_dict = defaultdict(int)
+            for category, duration in summary:
+                summary_dict[category] = duration
+
+            table = [[category, str(timedelta(seconds=duration))] for category, duration in summary_dict.items()]
+            total_duration = sum(summary_dict.values())
+
+            print(f"\nSummary report for {RANGE[date_range]} ({start_date} to {end_date}):")
+            print(tabulate(table, headers=headers, tablefmt="grid"))
+            print(f"\nTotal duration: {str(timedelta(seconds=total_duration))}")
+        else:
+            print("No activities found in the specified date range.")
+    except sqlite3.Error as e:
+        print(f"An error occurred while fetching the summary: {e}")
+
+
 COLOR_DICT = config.get('color_dict', {})
 
 
@@ -246,6 +283,7 @@ def clockcsv(start_date, end_date, category=None):
 clockwork.add_command(clockin)
 clockwork.add_command(clockout)
 clockwork.add_command(clocklog)
+clockwork.add_command(clocksum)
 clockwork.add_command(clockvis)
 clockwork.add_command(clockcsv)
 
