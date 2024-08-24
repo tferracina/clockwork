@@ -42,7 +42,7 @@ def clockin(category, activity, task, notes=None):
         notes = validate_input(notes) if notes else None
         with sqlite3.connect(get_db_path()) as conn:
             c = conn.cursor()
-            current_time = datetime.datetime.now()
+            current_time = datetime.now()
             c.execute("INSERT INTO timelog (category, activity, task, start_time, notes) VALUES (?, ?, ?, ?, ?)",
                       (category, activity, task, current_time, notes))
             conn.commit()
@@ -64,7 +64,7 @@ def clockout(activity, notes=None):
 
         with sqlite3.connect(get_db_path()) as conn:
             c = conn.cursor()
-            current_time = datetime.datetime.now()
+            current_time = datetime.now()
 
             c.execute("SELECT COUNT(*) FROM timelog WHERE activity = ? AND end_time IS NULL",
                        (activity,))
@@ -76,7 +76,7 @@ def clockout(activity, notes=None):
 
             if result:
                 activity_id, start_time = result
-                start_time = datetime.datetime.strptime(start_time, '%Y-%m-%d %H:%M:%S.%f')
+                start_time = datetime.strptime(start_time, '%Y-%m-%d %H:%M:%S.%f')
                 duration = int((current_time - start_time).total_seconds())
 
                 if notes:
@@ -86,7 +86,7 @@ def clockout(activity, notes=None):
                     c.execute("UPDATE timelog SET end_time = ?, duration = ? WHERE id = ?",
                               (current_time, duration, activity_id))
                 conn.commit()
-                print(f"Clocked out from {activity} at {current_time.strftime('%H:%M:%S')} | Duration: {datetime.timedelta(seconds=duration)}")
+                print(f"Clocked out from {activity} at {current_time.strftime('%H:%M:%S')} | Duration: {timedelta(seconds=duration)}")
             else:
                 print(f"No active clock-in found for {activity}")
     except sqlite3.Error as e:
