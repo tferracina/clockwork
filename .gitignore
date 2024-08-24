@@ -12,3 +12,5 @@ __pycache__/
 image.png
 
 .vscode/
+
+dashboard.ipynb
