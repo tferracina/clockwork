@@ -1,6 +1,6 @@
 """
 Description: A simple CLI tool for tracking time spent on different activities.
-Clockwork v1.0.1
+Clockwork v1.1.0
 """
 import datetime
 import sqlite3
