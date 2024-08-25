@@ -15,6 +15,15 @@ You'll need Python installed on your system for this.
     `pip install -r requirements.txt`
 
 
+## Easy Installation for Windows Users
+
+1. Download this repository as a ZIP file and extract it to a location of your choice.
+2. Double-click on the `install_clockwork.bat` file.
+3. Follow any prompts that appear.
+4. After installation, restart your command prompt.
+
+
+
 ## File Storage
 
 clockwork stores its data in a SQLite database located in a .clockwork directory in your home folder. The file `timelog.db` will be created to keep track of your logs. Configuration settings are stored in `config.json` in the same directory.
