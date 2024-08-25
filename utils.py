@@ -9,6 +9,7 @@ import subprocess
 import sys
 import random
 import json
+import pandas as pd
 
 
 # Define the paths
@@ -84,6 +85,20 @@ def init_db():
         print(f"An error occurred while creating the directory: {e}")
 
 
+def load_data():
+    """Query all the data from database"""
+    query = """
+    SELECT *
+    FROM timelog
+    ORDER BY start_time
+    """
+    with sqlite3.connect(get_db_path()) as conn:
+        df = pd.read_sql_query(query, conn)
+        df['start_time'] = pd.to_datetime(df['start_time'])
+        df['end_time'] = pd.to_datetime(df['end_time'])
+    return df
+
+
 def validate_input(input_string, max_length=100):
     """Validate and sanitize input."""
     if not input_string or not isinstance(input_string, str):
@@ -107,9 +122,24 @@ def get_date_range(date_range):
         next_month = today.replace(day=28) + timedelta(days=4)
         end_date = next_month - timedelta(days=next_month.day)
     elif date_range == "y":
-        start_date = today.replace(month=1, day=1)
-        end_date = today.replace(month=12, day=31)
+        end_date = datetime.now().date()
+        start_date = end_date.replace(month=1, day=1)
     return start_date, end_date
+
+
+def df_by_range(df, date_range):
+    """Filter the DataFrame by the given date range."""
+    start_date, end_date = get_date_range(date_range)
+
+    df['start_time'] = pd.to_datetime(df['start_time'])
+    df['end_time'] = pd.to_datetime(df['end_time'])
+
+    return df[(df['start_time'].dt.date >= start_date) & (df['start_time'].dt.date <= end_date)]
+
+
+def minute_to_string(x):
+    """Converts the minute to a string in the format HH:MM."""
+    return f"{int((x%(24*60))/60):02d}h {int(x%60):02d}m"
 
 
 def open_file(filepath):
