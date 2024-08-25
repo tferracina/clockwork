@@ -109,11 +109,10 @@ def validate_input(input_string, max_length=100):
 
 
 def get_date_range(date_range):
-    """Get the start and end dates based on the date range."""
+    """Get the start and end dates based on the date range string."""
     today = datetime.now().date()
     if date_range == "d":
-        start_date = today
-        end_date = today
+        start_date = end_date = today
     elif date_range == "w":
         start_date = today - timedelta(days=today.weekday())
         end_date = start_date + timedelta(days=6)
@@ -122,13 +121,19 @@ def get_date_range(date_range):
         next_month = today.replace(day=28) + timedelta(days=4)
         end_date = next_month - timedelta(days=next_month.day)
     elif date_range == "y":
-        end_date = datetime.now().date()
+        end_date = today
         start_date = end_date.replace(month=1, day=1)
+    else:
+        raise ValueError(f"Invalid date_range string: {date_range}. Must be 'd', 'w', 'm', or 'y'.")
+
     return start_date, end_date
 
 
 def df_by_range(df, date_range):
-    """Filter the DataFrame by the given date range."""
+    """Filter the DataFrame by the given date range string."""
+    if date_range is None:
+        return df
+
     start_date, end_date = get_date_range(date_range)
 
     df['start_time'] = pd.to_datetime(df['start_time'])
