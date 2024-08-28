@@ -9,7 +9,9 @@ import subprocess
 import sys
 import random
 import json
+import tempfile
 import pandas as pd
+import plotly.express as px
 
 
 # Define the paths
@@ -155,3 +157,45 @@ def open_file(filepath):
 def generate_random_color():
     """Generate a random color code for the COLOR_DICT."""
     return f"#{random.randint(0, 0xFFFFFF):06x}"
+
+
+def make_pie_chart(df, date_range=None, category=None):
+    """Create a pie chart based on the DataFrame."""
+
+    if date_range is not None:
+        date_subdf = df_by_range(df, date_range)
+    else:
+        date_subdf = df
+
+    start_date = date_subdf['start_time'].min().date()
+    end_date = date_subdf['end_time'].max().date()
+
+    if category is not None:
+        cat_subdf = date_subdf[date_subdf['category'] == category]
+    else:
+        cat_subdf = date_subdf
+
+    color_scale = px.colors.qualitative.Plotly
+
+    if category is None:
+        pie_fig = px.pie(cat_subdf, names='category', values='duration', color='category', color_discrete_sequence=color_scale)
+    else:
+        pie_fig = px.pie(cat_subdf, names='activity', values='duration', color='activity', color_discrete_sequence=color_scale)
+
+    pie_fig.update_traces(textposition='inside',
+                          direction='clockwise',
+                          hole=0.3,
+                          textinfo='percent+label')
+
+    total_time = cat_subdf['duration'].sum()
+    formatted_tt = minute_to_string(int(total_time))
+
+
+    pie_fig.update_layout(uniformtext_minsize=12,
+                          uniformtext_mode='hide',
+                          title=dict(text=f'{"breakdown" if category is None else f"{category} Breakdown"} from {start_date} to {end_date}', x=0.5),
+                          annotations=[dict(text=formatted_tt, x=0.5, y=0.5, font_size=12, showarrow=False)]
+                          )
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.html', mode='w', encoding='utf-8') as tmpfile:
+        pie_fig.write_html(tmpfile.name)
+        return tmpfile.name

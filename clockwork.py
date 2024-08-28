@@ -11,11 +11,10 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 import click
 from tabulate import tabulate
-import matplotlib.pyplot as plt
 
 from utils import (get_db_path, ensure_table_exists, validate_input,
-                   get_date_range, generate_random_color, open_file,
-                   load_config, save_config)
+                   get_date_range, open_file, load_config, save_config,
+                   load_data, make_pie_chart)
 
 
 # Define temp paths
@@ -195,62 +194,33 @@ COLOR_DICT = config.get('color_dict', {})
 
 
 @click.command()
-@click.option('--start-date', type=click.DateTime(formats=["%Y-%m-%d"]))
-@click.option('--end-date', type=click.DateTime(formats=["%Y-%m-%d"]))
-@click.option('--category', help='Optional category filter')
-def clockvis(start_date, end_date, category=None):
+@click.argument('date_range', type=click.Choice(RANGE.keys()), default="w")
+@click.argument('category', required=False)
+def clockvis(date_range, category=None):
     """Visualize the time distribution for the activities between the given dates."""
-    ensure_table_exists()
-
     try:
-        with sqlite3.connect(get_db_path()) as conn:
-            c = conn.cursor()
-            if category:
-                category = validate_input(category)
-                c.execute("""SELECT activity, SUM(duration)
-                            FROM timelog
-                            WHERE date(start_time) BETWEEN ? AND ?
-                            AND duration IS NOT NULL
-                            AND category = ?
-                            GROUP BY activity""", (start_date, end_date, category))
-            else:
-                c.execute("""SELECT category, SUM(duration)
-                            FROM timelog
-                            WHERE date(start_time) BETWEEN ? AND ?
-                            AND duration IS NOT NULL
-                            GROUP BY category""", (start_date, end_date))
-            data = c.fetchall()
+        ensure_table_exists()
+        data = load_data()
 
-        fig_path = temp_dir / f"time_dist_{start_date}_{end_date}{'_' + category if category else ''}.png"
+        if data.empty:
+            print("No data available for visualization.")
+            return
 
-        if data:
-            labels, durations = zip(*data)
-            if not durations:
-                print("No data available for visualization in the specified date range and/or category.")
-                return
-            plt.figure(figsize=(10, 7))
-            colors = []
-            for label in labels:
-                if label not in COLOR_DICT:
-                    COLOR_DICT[label] = generate_random_color()
-                colors.append(COLOR_DICT[label])
-            plt.pie(durations, labels=labels, autopct='%1.1f%%', shadow=True, colors=colors)
-            title = f"Time Distribution ({start_date} to {end_date})"
-            if category:
-                title += f" for category: {category}"
-            plt.title(title)
-            plt.legend(loc="best")
-            plt.axis('equal')
-            plt.savefig(fig_path)
-            plt.close()
-            print(f"Time distribution saved to {fig_path}")
-            open_file(str(fig_path))
+        if category is not None:
+            category = validate_input(category)
+
+        fig_path = make_pie_chart(data, date_range, category)
+
+        if fig_path is not None:
+            open_file(fig_path)
         else:
             print("No data available for visualization in the specified date range and/or category.")
     except sqlite3.Error as e:
         print(f"An error occurred while fetching data for visualization: {e}")
     except subprocess.SubprocessError as e:
         print(f"An error occurred while opening the image: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
 
 
 config['color_dict'] = COLOR_DICT
