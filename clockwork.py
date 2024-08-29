@@ -102,10 +102,8 @@ RANGE = {
 
 @click.command()
 @click.argument('date_range', type=click.Choice(RANGE.keys()), default="w")
-#@click.option('--start-date', type=click.DateTime(formats=["%Y-%m-%d"]))
-#@click.option('--end-date', type=click.DateTime(formats=["%Y-%m-%d"]))
 def clocklog(date_range):
-    """Generate a report for the activities between the given dates"""
+    """Generate a weekly report for the activities between the given dates"""
     ensure_table_exists()
 
     start_date, end_date = get_date_range(date_range)
@@ -113,19 +111,42 @@ def clocklog(date_range):
     try:
         with sqlite3.connect(get_db_path()) as conn:
             c = conn.cursor()
-            c.execute("""SELECT id, category, activity, task,
-                                strftime('%Y-%m-%d %H:%M:%S', start_time) AS start_time,
-                                strftime('%Y-%m-%d %H:%M:%S', end_time) AS end_time,
-                                duration, notes
+            c.execute("""SELECT category,
+                                strftime('%w', start_time) AS day_of_week,
+                                COALESCE(SUM(duration), 0) as total_duration
                          FROM timelog
                          WHERE date(start_time) BETWEEN ? AND ?
-                         ORDER BY start_time""", (start_date, end_date))
+                         GROUP BY category, day_of_week
+                         ORDER BY day_of_week, category""", (start_date, end_date))
             activities = c.fetchall()
 
         if activities:
-            headers = ["ID", "CATEGORY", "ACTIVITY", "TASK", "START_TIME", "END_TIME", "DURATION", "NOTES"]
-            table = [[a[0], a[1], a[2], a[3], a[4], a[5] or "Ongoing", str(timedelta(seconds=a[6])) if a[6] else "N/A", a[7]] for a in activities]
-            print(f"\nReport for {RANGE[date_range]} activities ({start_date} to {end_date}):")
+            # Create a nested dictionary to store the data
+            week_data = defaultdict(lambda: defaultdict(int))
+            for category, day, duration in activities:
+                week_data[int(day)][category] = int(duration)  # Ensure duration is an integer
+
+            # Prepare the table data
+            headers = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]
+            table = []
+
+            # Find all unique categories
+            all_categories = set(category for day_data in week_data.values() for category in day_data.keys())
+
+            for category in sorted(all_categories):
+                row = []
+                for day in range(7):  # 0 (Sunday) to 6 (Saturday)
+                    duration = week_data[day].get(category, 0)
+                    if duration > 0:
+                        row.append(f"{category}:\n{str(timedelta(seconds=duration))}")
+                    else:
+                        row.append("")
+                table.append(row)
+
+            # Reorder the columns to start with Monday
+            table = [row[1:] + [row[0]] for row in table]
+
+            print(f"\nWeekly report for {RANGE[date_range]} ({start_date} to {end_date}):")
             print(tabulate(table, headers=headers, tablefmt="grid"))
         else:
             print("No activities found in the specified date range.")
@@ -135,9 +156,8 @@ def clocklog(date_range):
 
 @click.command()
 @click.argument('date_range', type=click.Choice(RANGE.keys()), default="w")
-@click.argument('category', required=False)
-def clocksum(date_range, category=None):
-    """Generate a summary report of activities by category between the given dates"""
+def clocksum(date_range):
+    """Generate a nested summary report of activities by category between the given dates"""
     ensure_table_exists()
 
     start_date, end_date = get_date_range(date_range)
@@ -145,43 +165,38 @@ def clocksum(date_range, category=None):
     try:
         with sqlite3.connect(get_db_path()) as conn:
             c = conn.cursor()
-            if category:
-                category = validate_input(category)
-                c.execute("""SELECT activity, SUM(duration) as total_duration
-                            FROM timelog
-                            WHERE date(start_time) BETWEEN ? AND ?
-                            AND duration IS NOT NULL
-                            AND category = ?
-                            GROUP BY activity
-                            ORDER BY total_duration DESC""", (start_date, end_date, category))
-            else:
-                c.execute("""SELECT category, SUM(duration) as total_duration
-                            FROM timelog
-                            WHERE date(start_time) BETWEEN ? AND ?
-                            AND duration IS NOT NULL
-                            GROUP BY category
-                            ORDER BY total_duration DESC""", (start_date, end_date))
+            c.execute("""SELECT category, activity, task, SUM(duration) as total_duration
+                        FROM timelog
+                        WHERE date(start_time) BETWEEN ? AND ?
+                        AND duration IS NOT NULL
+                        GROUP BY category, activity, task
+                        ORDER BY category, activity, total_duration DESC""", (start_date, end_date))
             summary = c.fetchall()
 
         if summary:
-            if category is not None:
-                headers = ["ACTIVITY", "TOTAL DURATION"]
-                summary_dict = defaultdict(int)
-                for activity, duration in summary:
-                    summary_dict[activity] = duration
+            headers = ["CATEGORY", "ACTIVITY", "TASK", "DURATION"]
+            table = []
+            summary_dict = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
 
-                table = [[activity, str(timedelta(seconds=duration))] for activity, duration in summary_dict.items()]
-                total_duration = sum(summary_dict.values())
-            else:
-                headers = ["CATEGORY", "TOTAL DURATION"]
-                summary_dict = defaultdict(int)
-                for category, duration in summary:
-                    summary_dict[category] = duration
+            # Organize data into nested dictionary
+            for category, activity, task, duration in summary:
+                summary_dict[category][activity][task] = duration
 
-                table = [[category, str(timedelta(seconds=duration))] for category, duration in summary_dict.items()]
-                total_duration = sum(summary_dict.values())
+            # Build the table
+            for category, activities in summary_dict.items():
+                category_total = sum(sum(tasks.values()) for tasks in activities.values())
+                table.append([category, "", "", str(timedelta(seconds=category_total))])
 
-            print(f"\nSummary report for {RANGE[date_range]} ({start_date} to {end_date}):")
+                for activity, tasks in activities.items():
+                    activity_total = sum(tasks.values())
+                    table.append(["", activity, "", str(timedelta(seconds=activity_total))])
+
+                    for task, duration in tasks.items():
+                        table.append(["", "", task, str(timedelta(seconds=duration))])
+
+            total_duration = sum(sum(sum(tasks.values()) for tasks in activities.values()) for activities in summary_dict.values())
+
+            print(f"\nNested summary report for {RANGE[date_range]} ({start_date} to {end_date}):")
             print(tabulate(table, headers=headers, tablefmt="grid"))
             print(f"\nTotal duration: {str(timedelta(seconds=total_duration))}")
         else:

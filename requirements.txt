@@ -9,6 +9,7 @@ numpy==2.0.1
 packaging==24.1
 pandas==2.2.2
 pillow==10.4.0
+plotly==5.23.0
 pyparsing==3.1.4
 python-dateutil==2.9.0.post0
 pytz==2024.1
