@@ -1,15 +1,16 @@
-import pandas as pd
 import plotly.express as px
 import panel as pn
 
 from utils import load_data, df_by_range, minute_to_string
 
 class Dashboard():
+    """A class to create and update the dashboard."""
     def __init__(self):
         self.df = self.prepare_data()
         self.dashboard = self.create_dashboard()
 
     def prepare_data(self):
+        """Prepare the data for visualization."""
         df = load_data()
         df['day'] =df['start_time'].dt.date
         df['month'] =df['start_time'].dt.to_period('M')
@@ -19,6 +20,7 @@ class Dashboard():
         return df
 
     def create_dashboard(self):
+        """Create the dashboard layout."""
         return pn.Tabs(
             ('Pie', pn.Column(pn.pane.Plotly())),
             ('Bar', pn.Column(pn.pane.Plotly())),
@@ -26,8 +28,9 @@ class Dashboard():
         )
 
     def make_pie_chart(self, date_range=None, category=None):
+        """Create a pie chart based on the given date range and category."""
         # Filter the DataFrame by the given date range
-        date_subdf = df_by_range(self.df, date_range) if date_range else self.df
+        date_subdf = df_by_range(self.df, date_range[0], date_range[1]) if date_range else self.df
         start_date = date_subdf['start_time'].min().date()
         end_date = date_subdf['end_time'].max().date()
 
@@ -65,8 +68,9 @@ class Dashboard():
         return fig
 
     def make_bar_chart(self, date_range=None, category=None):
+        """Create a bar chart based on the given date range and category."""
         # Filter the DataFrame by the given date range
-        date_subdf = df_by_range(self.df, date_range) if date_range else self.df
+        date_subdf = df_by_range(self.df, date_range[0], date_range[1]) if date_range else self.df
         start_date = date_subdf['start_time'].min().date()
         end_date = date_subdf['end_time'].max().date()
 
@@ -93,7 +97,8 @@ class Dashboard():
         return fig
 
     def make_gantt_chart(self, date_range=None):
-        date_subdf = df_by_range(self.df, date_range) if date_range else self.df
+        """Create a Gantt chart based on the given date range."""
+        date_subdf = df_by_range(self.df, date_range[0], date_range[1]) if date_range else self.df
 
         fig = px.timeline(
             date_subdf,
@@ -118,7 +123,8 @@ class Dashboard():
 
         return fig
 
-    def update_dashboard(self, date_range=None, category=None):
+    def update_dashboard(self, start_date, end_date, category=None):
+        date_range = (start_date, end_date)
         pie_chart = self.make_pie_chart(date_range, category)
         bar_chart = self.make_bar_chart(date_range, category)
         gantt_chart = self.make_gantt_chart(date_range)
@@ -134,22 +140,28 @@ class Dashboard():
 dashboard = Dashboard()
 
 # Create widgets
-date_range_select = pn.widgets.Select(name='Date Range', options=['', 'd', 'w', 'm', 'y'])
+date_range_picker = pn.widgets.DateRangeSlider(
+    name='Date Range',
+    start=dashboard.df['start_time'].min().date(),
+    end=dashboard.df['start_time'].max().date(),
+    value=(dashboard.df['start_time'].min().date(), dashboard.df['start_time'].max().date())
+)
 category_select = pn.widgets.Select(name='Category', options=[''] + list(dashboard.df['category'].unique()))
 
 # Create a function to update the dashboard
 def update_dashboard_wrapper(event):
-    date_range = date_range_select.value
+    """Update the dashboard based on the selected date range and category."""
+    start_date, end_date = date_range_picker.value
     category = category_select.value
-    dashboard.update_dashboard(date_range, category)
+    dashboard.update_dashboard(start_date, end_date, category)
 
 # Add callbacks to the widgets
-date_range_select.param.watch(update_dashboard_wrapper, 'value')
+date_range_picker.param.watch(update_dashboard_wrapper, 'value')
 category_select.param.watch(update_dashboard_wrapper, 'value')
 
 # Create the layout
 layout = pn.Column(
-    pn.Row(date_range_select, category_select),
+    pn.Row(date_range_picker, category_select),
     dashboard.dashboard
 )
 

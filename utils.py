@@ -94,8 +94,8 @@ def load_data():
     """
     with sqlite3.connect(get_db_path()) as conn:
         df = pd.read_sql_query(query, conn)
-        df['start_time'] = pd.to_datetime(df['start_time'])
-        df['end_time'] = pd.to_datetime(df['end_time'])
+        df['start_time'] = pd.to_datetime(df['start_time'], format='mixed')
+        df['end_time'] = pd.to_datetime(df['end_time'], format='mixed')
     return df
 
 
@@ -129,22 +129,24 @@ def get_date_range(date_range):
     return start_date, end_date
 
 
-def df_by_range(df, date_range):
-    """Filter the DataFrame by the given date range string."""
-    if date_range is None:
-        return df
+def df_by_range(df, start_date, end_date):
+    """
+    Filter DataFrame by date range.
 
-    start_date, end_date = get_date_range(date_range)
-
-    df['start_time'] = pd.to_datetime(df['start_time'])
-    df['end_time'] = pd.to_datetime(df['end_time'])
-
-    return df[(df['start_time'].dt.date >= start_date) & (df['start_time'].dt.date <= end_date)]
+    :param df: DataFrame to filter
+    :param start_date: Start date (inclusive)
+    :param end_date: End date (inclusive)
+    :return: Filtered DataFrame
+    """
+    mask = (df['start_time'].dt.date >= start_date) & (df['end_time'].dt.date <= end_date)
+    return df.loc[mask]
 
 
 def minute_to_string(x):
     """Converts the minute to a string in the format HH:MM."""
-    return f"{int((x%(24*60))/60):02d}h {int(x%60):02d}m"
+    h=x//60
+    m=x%60
+    return f"{h}h {m}m"
 
 
 def open_file(filepath):
