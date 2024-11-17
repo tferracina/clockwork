@@ -24,12 +24,7 @@ from utils import (
     make_pie_chart,
 )
 
-from db_manager import (
-    DatabaseError,
-    execute_query,
-    execute_write_query,
-    init_db
-)
+from db_manager import DatabaseError, execute_query, execute_write_query, init_db
 
 
 # CONSTANTS
@@ -62,7 +57,9 @@ def clockin(category, activity, task, notes=None):
             VALUES (?, ?, ?, ?, ?)
         """
         execute_write_query(query, (category, activity, task, current_time, notes))
-        print(f"Clocked in for {activity} ({task}) at {current_time.strftime('%H:%M:%S')}")
+        print(
+            f"Clocked in for {activity} ({task}) at {current_time.strftime('%H:%M:%S')}"
+        )
     except DatabaseError as e:
         print(f"Database error while clocking in: {e}")
     except ValueError as e:
@@ -109,12 +106,13 @@ def clockout(activity, notes=None):
             WHERE id = ?
         """
         execute_write_query(
-            update_query,
-            (current_time, duration, notes, notes, notes, activity_id)
+            update_query, (current_time, duration, notes, notes, notes, activity_id)
         )
 
-        print(f"Clocked out from {activity} at {current_time.strftime('%H:%M:%S')} | "
-              f"Duration: {timedelta(seconds=duration)}")
+        print(
+            f"Clocked out from {activity} at {current_time.strftime('%H:%M:%S')} | "
+            f"Duration: {timedelta(seconds=duration)}"
+        )
     except DatabaseError as e:
         print(f"Database error while clocking out: {e}")
     except ValueError as e:
@@ -377,10 +375,12 @@ def clockcsv(start_date, end_date, category=None):
             writer.writerow(headers)
             for activity in activities:
                 # Convert activity from sqlite3.Row to list
-                writer.writerow([
-                    str(value) if value is not None else ""
-                    for value in dict(activity).values()
-                ])
+                writer.writerow(
+                    [
+                        str(value) if value is not None else ""
+                        for value in dict(activity).values()
+                    ]
+                )
 
         print(f"CSV file generated: {csv_file}")
 
