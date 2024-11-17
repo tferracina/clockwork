@@ -4,7 +4,6 @@ Clockwork v1.1.0
 """
 
 import datetime
-import sqlite3
 import tempfile
 import subprocess
 from pathlib import Path
@@ -12,10 +11,10 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 import click
 from tabulate import tabulate
+import csv
+from time import perf_counter
 
 from utils import (
-    get_db_path,
-    ensure_table_exists,
     validate_input,
     get_date_range,
     open_file,
@@ -25,8 +24,16 @@ from utils import (
     make_pie_chart,
 )
 
+from db_manager import (
+    DatabaseError,
+    execute_query,
+    execute_write_query,
+    init_db
+)
 
-# Define temp paths
+
+# CONSTANTS
+RANGE = {"d": "daily", "w": "weekly", "m": "monthly", "y": "yearly"}
 temp_dir = Path(tempfile.gettempdir())
 config = load_config()
 
@@ -42,115 +49,106 @@ def clockwork():
 @click.argument("task")
 @click.option("--notes", help="Additional notes for the activity", default=None)
 def clockin(category, activity, task, notes=None):
-    """Clock in for the given activity, provide category, activity, and task + (optionally notes)"""
-    ensure_table_exists()
-
+    """Clock in for the given activity."""
     try:
         category = validate_input(category)
         activity = validate_input(activity)
         task = validate_input(task)
         notes = validate_input(notes) if notes else None
-        with sqlite3.connect(get_db_path()) as conn:
-            c = conn.cursor()
-            current_time = datetime.now()
-            c.execute(
-                "INSERT INTO timelog (category, activity, task, start_time, notes) VALUES (?, ?, ?, ?, ?)",
-                (category, activity, task, current_time, notes),
-            )
-            conn.commit()
-        print(
-            f"Clocked in for {activity} ({task}) at {current_time.strftime('%H:%M:%S')}"
-        )
-    except (sqlite3.Error, ValueError) as e:
-        print(f"An error occurred while clocking in: {e}")
+
+        current_time = datetime.now()
+        query = """
+            INSERT INTO timelog (category, activity, task, start_time, notes)
+            VALUES (?, ?, ?, ?, ?)
+        """
+        execute_write_query(query, (category, activity, task, current_time, notes))
+        print(f"Clocked in for {activity} ({task}) at {current_time.strftime('%H:%M:%S')}")
+    except DatabaseError as e:
+        print(f"Database error while clocking in: {e}")
+    except ValueError as e:
+        print(f"Invalid input: {e}")
 
 
 @click.command()
 @click.argument("activity")
 @click.option("--notes", help="Additional notes for the activity", default=None)
 def clockout(activity, notes=None):
-    """Clock out for the given activity, provide activity name + (optionally notes)."""
-    ensure_table_exists()
-
+    """Clock out from the given activity."""
     try:
         activity = validate_input(activity)
         notes = validate_input(notes) if notes else None
+        current_time = datetime.now()
 
-        with sqlite3.connect(get_db_path()) as conn:
-            c = conn.cursor()
-            current_time = datetime.now()
+        # First check if there's an active session
+        query = """
+            SELECT id, start_time
+            FROM timelog
+            WHERE activity = ? AND end_time IS NULL
+            ORDER BY start_time DESC LIMIT 1
+        """
+        result = execute_query(query, (activity,))
 
-            c.execute(
-                "SELECT COUNT(*) FROM timelog WHERE activity = ? AND end_time IS NULL",
-                (activity,),
-            )
-            if c.fetchone()[0] == 0:
-                print(f"No active clock-in found for {activity}")
-                return
-            c.execute(
-                "SELECT id, start_time FROM timelog WHERE activity = ? AND end_time IS NULL ORDER BY start_time DESC LIMIT 1",
-                (activity,),
-            )
-            result = c.fetchone()
+        if not result:
+            print(f"No active clock-in found for {activity}")
+            return
 
-            if result:
-                activity_id, start_time = result
-                start_time = datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S.%f")
-                duration = int((current_time - start_time).total_seconds())
+        activity_id, start_time = result[0]
+        start_time = datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S.%f")
+        duration = int((current_time - start_time).total_seconds())
 
-                if notes:
-                    c.execute(
-                        "UPDATE timelog SET end_time = ?, duration = ?, notes = COALESCE(notes || ' ' || ?, notes, ?) WHERE id = ?",
-                        (current_time, duration, notes, notes, activity_id),
-                    )
-                else:
-                    c.execute(
-                        "UPDATE timelog SET end_time = ?, duration = ? WHERE id = ?",
-                        (current_time, duration, activity_id),
-                    )
-                conn.commit()
-                print(
-                    f"Clocked out from {activity} at {current_time.strftime('%H:%M:%S')} | Duration: {timedelta(seconds=duration)}"
-                )
-            else:
-                print(f"No active clock-in found for {activity}")
-    except sqlite3.Error as e:
-        print(f"An error occurred while clocking out: {e}")
+        # Update the record
+        update_query = """
+            UPDATE timelog
+            SET end_time = ?,
+                duration = ?,
+                notes = CASE
+                    WHEN ? IS NOT NULL
+                    THEN COALESCE(notes || ' ' || ?, ?)
+                    ELSE notes
+                END
+            WHERE id = ?
+        """
+        execute_write_query(
+            update_query,
+            (current_time, duration, notes, notes, notes, activity_id)
+        )
 
-
-RANGE = {"d": "daily", "w": "weekly", "m": "monthly", "y": "yearly"}
+        print(f"Clocked out from {activity} at {current_time.strftime('%H:%M:%S')} | "
+              f"Duration: {timedelta(seconds=duration)}")
+    except DatabaseError as e:
+        print(f"Database error while clocking out: {e}")
+    except ValueError as e:
+        print(f"Invalid input: {e}")
 
 
 @click.command()
 @click.argument("date_range", type=click.Choice(RANGE.keys()), default="w")
 def clocklog(date_range):
     """Generate a weekly report for the activities between the given dates"""
-    ensure_table_exists()
-
-    start_date, end_date = get_date_range(date_range)
-
     try:
-        with sqlite3.connect(get_db_path()) as conn:
-            c = conn.cursor()
-            c.execute(
-                """SELECT category,
-                                strftime('%w', start_time) AS day_of_week,
-                                COALESCE(SUM(duration), 0) as total_duration
-                         FROM timelog
-                         WHERE date(start_time) BETWEEN ? AND ?
-                         GROUP BY category, day_of_week
-                         ORDER BY day_of_week, category""",
-                (start_date, end_date),
-            )
-            activities = c.fetchall()
+        start_date, end_date = get_date_range(date_range)
 
-        if activities:
+        query = """
+            SELECT
+                category,
+                -- Convert to 1 (Monday) through 7 (Sunday)
+                CASE CAST(strftime('%w', start_time) AS INTEGER)
+                    WHEN 0 THEN 7  -- Sunday becomes 7
+                    ELSE CAST(strftime('%w', start_time) AS INTEGER)
+                END AS day_of_week,
+                COALESCE(SUM(duration), 0) as total_duration
+            FROM timelog
+            WHERE date(start_time) BETWEEN ? AND ?
+            GROUP BY category, day_of_week
+            ORDER BY category, day_of_week
+        """
+        result = execute_query(query, (start_date, end_date))
+
+        if result:
             # Create a nested dictionary to store the data
             week_data = defaultdict(lambda: defaultdict(int))
-            for category, day, duration in activities:
-                week_data[int(day)][category] = int(
-                    duration
-                )  # Ensure duration is an integer
+            for category, day, duration in result:
+                week_data[int(day)][category] = int(duration)
 
             # Prepare the table data
             headers = [
@@ -171,9 +169,10 @@ def clocklog(date_range):
                 for category in day_data.keys()
             )
 
+            # Build rows with correct day mapping (1 = Monday through 7 = Sunday)
             for category in sorted(all_categories):
                 row = []
-                for day in range(7):  # 0 (Sunday) to 6 (Saturday)
+                for day in range(1, 8):  # 1 (Monday) to 7 (Sunday)
                     duration = week_data[day].get(category, 0)
                     if duration > 0:
                         row.append(f"{category}:\n{str(timedelta(seconds=duration))}")
@@ -181,48 +180,63 @@ def clocklog(date_range):
                         row.append("")
                 table.append(row)
 
-            # Reorder the columns to start with Monday
-            table = [row[1:] + [row[0]] for row in table]
-
             print(
                 f"\nWeekly report for {RANGE[date_range]} ({start_date} to {end_date}):"
             )
             print(tabulate(table, headers=headers, tablefmt="grid"))
+
+            # Print totals
+            daily_totals = []
+            for day in range(1, 8):
+                total = sum(week_data[day].values())
+                if total > 0:
+                    daily_totals.append(str(timedelta(seconds=total)))
+                else:
+                    daily_totals.append("")
+
+            print("\nDaily Totals:")
+            print(tabulate([daily_totals], headers=headers, tablefmt="grid"))
+
+            # Print grand total
+            grand_total = sum(
+                duration
+                for day_data in week_data.values()
+                for duration in day_data.values()
+            )
+            if grand_total > 0:
+                print(f"\nTotal time: {str(timedelta(seconds=grand_total))}")
+
         else:
             print("No activities found in the specified date range.")
-    except sqlite3.Error as e:
-        print(f"An error occurred while fetching the report: {e}")
+    except DatabaseError as e:
+        print(f"Database error while generating report: {e}")
+    except ValueError as e:
+        print(f"Invalid input: {e}")
 
 
 @click.command()
 @click.argument("date_range", type=click.Choice(RANGE.keys()), default="w")
 def clocksum(date_range):
     """Generate a nested summary report of activities by category between the given dates"""
-    ensure_table_exists()
-
-    start_date, end_date = get_date_range(date_range)
-
+    start_timer = perf_counter()
     try:
-        with sqlite3.connect(get_db_path()) as conn:
-            c = conn.cursor()
-            c.execute(
-                """SELECT category, activity, task, SUM(duration) as total_duration
+        start_date, end_date = get_date_range(date_range)
+        query = """SELECT category, activity, task, SUM(duration) as total_duration
                         FROM timelog
                         WHERE date(start_time) BETWEEN ? AND ?
                         AND duration IS NOT NULL
                         GROUP BY category, activity, task
-                        ORDER BY category, activity, total_duration DESC""",
-                (start_date, end_date),
-            )
-            summary = c.fetchall()
+                        ORDER BY category, activity, total_duration DESC"""
 
-        if summary:
+        result = execute_query(query, (start_date, end_date))
+
+        if result:
             headers = ["CATEGORY", "ACTIVITY", "TASK", "DURATION"]
             table = []
             summary_dict = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
 
             # Organize data into nested dictionary
-            for category, activity, task, duration in summary:
+            for category, activity, task, duration in result:
                 summary_dict[category][activity][task] = duration
 
             # Build the table
@@ -251,10 +265,13 @@ def clocksum(date_range):
             )
             print(tabulate(table, headers=headers, tablefmt="grid"))
             print(f"\nTotal duration: {str(timedelta(seconds=total_duration))}")
+            print(f"\nReport generated in {perf_counter() - start_timer:.2f} seconds")
         else:
             print("No activities found in the specified date range.")
-    except sqlite3.Error as e:
+    except DatabaseError as e:
         print(f"An error occurred while fetching the summary: {e}")
+    except ValueError as e:
+        print(f"Invalid input: {e}")
 
 
 COLOR_DICT = config.get("color_dict", {})
@@ -266,7 +283,7 @@ COLOR_DICT = config.get("color_dict", {})
 def clockvis(date_range, category=None):
     """Visualize the time distribution for the activities between the given dates."""
     try:
-        ensure_table_exists()
+        init_db()  # Ensure database exists
         data = load_data()
 
         if data.empty:
@@ -279,17 +296,22 @@ def clockvis(date_range, category=None):
         fig_path = make_pie_chart(data, date_range, category)
 
         if fig_path is not None:
-            open_file(fig_path)
+            try:
+                open_file(fig_path)
+            except subprocess.SubprocessError as e:
+                print(f"Error opening visualization: {e}")
+                print(f"File saved at: {fig_path}")
         else:
             print(
                 "No data available for visualization in the specified date range and/or category."
             )
-    except sqlite3.Error as e:
-        print(f"An error occurred while fetching data for visualization: {e}")
-    except subprocess.SubprocessError as e:
-        print(f"An error occurred while opening the image: {e}")
+    except DatabaseError as e:
+        print(f"Database error while creating visualization: {e}")
+    except ValueError as e:
+        print(f"Invalid input: {e}")
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
+        raise
 
 
 config["color_dict"] = COLOR_DICT
@@ -302,60 +324,81 @@ save_config(config)
 @click.option("--category", help="Optional category filter")
 def clockcsv(start_date, end_date, category=None):
     """Generate a CSV file for the activities between the given dates."""
-    ensure_table_exists()
-
     try:
-        with sqlite3.connect(get_db_path()) as conn:
-            c = conn.cursor()
-            if category:
-                category = validate_input(category)
-                c.execute(
-                    """SELECT id, category, activity, task, start_time, end_time, duration, notes
-                            FROM timelog
-                            WHERE date(start_time) BETWEEN ? AND ?
-                            AND duration IS NOT NULL
-                            AND category = ?
-                            ORDER BY id""",
-                    (start_date, end_date, category),
-                )
-            else:
-                c.execute(
-                    """SELECT id, category, activity, task, start_time, end_time, duration, notes
-                            FROM timelog
-                            WHERE date(start_time) BETWEEN ? AND ?
-                            AND duration IS NOT NULL
-                            ORDER BY id""",
-                    (start_date, end_date),
-                )
-            activities = c.fetchall()
+        if end_date < start_date:
+            raise ValueError("End date must be after start date")
 
-        if activities:
-            headers = [
-                "ID",
-                "CATEGORY",
-                "ACTIVITY",
-                "TASK",
-                "START_TIME",
-                "END_TIME",
-                "DURATION",
-                "NOTES",
-            ]
-            csv_data = [",".join(headers)]
-            for a in activities:
-                csv_data.append(",".join([str(i) for i in a]))
-            csv_data = "\n".join(csv_data)
-            csv_file = (
-                temp_dir
-                / f"timelog_{start_date}_{end_date}{'_' + category if category else ''}.csv"
-            )
-            with open(csv_file, "w", newline="", encoding="utf-8") as f:
-                f.write(csv_data)
-            print(f"CSV file generated: {csv_file}")
-            open_file(str(csv_file))
+        # Prepare query and parameters
+        base_query = """
+            SELECT
+                id, category, activity, task,
+                start_time, end_time, duration, notes
+            FROM timelog
+            WHERE date(start_time) BETWEEN ? AND ?
+            AND duration IS NOT NULL
+        """
+
+        params = [start_date.date(), end_date.date()]
+
+        if category:
+            category = validate_input(category)
+            query = base_query + " AND category = ? ORDER BY id"
+            params.append(category)
         else:
+            query = base_query + " ORDER BY id"
+
+        # Execute query
+        activities = execute_query(query, tuple(params))
+
+        if not activities:
             print("No activities found in the specified date range.")
-    except sqlite3.Error as e:
-        print(f"An error occurred while generating the CSV file: {e}")
+            return
+
+        # Prepare CSV file
+        headers = [
+            "ID",
+            "CATEGORY",
+            "ACTIVITY",
+            "TASK",
+            "START_TIME",
+            "END_TIME",
+            "DURATION",
+            "NOTES",
+        ]
+
+        csv_file = (
+            temp_dir
+            / f"timelog_{start_date.date()}_{end_date.date()}{'_' + category if category else ''}.csv"
+        )
+
+        # Write CSV file using proper CSV handling
+        with open(csv_file, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(headers)
+            for activity in activities:
+                # Convert activity from sqlite3.Row to list
+                writer.writerow([
+                    str(value) if value is not None else ""
+                    for value in dict(activity).values()
+                ])
+
+        print(f"CSV file generated: {csv_file}")
+
+        try:
+            open_file(str(csv_file))
+        except subprocess.SubprocessError as e:
+            print(f"Error opening CSV file: {e}")
+            print(f"File saved at: {csv_file}")
+
+    except DatabaseError as e:
+        print(f"Database error while generating CSV file: {e}")
+    except ValueError as e:
+        print(f"Invalid input: {e}")
+    except IOError as e:
+        print(f"Error writing CSV file: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        raise
 
 
 clockwork.add_command(clockin)
@@ -367,5 +410,5 @@ clockwork.add_command(clockcsv)
 
 
 if __name__ == "__main__":
-    ensure_table_exists()
+    init_db()
     clockwork()

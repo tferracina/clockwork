@@ -12,6 +12,8 @@ import json
 import tempfile
 import pandas as pd
 import plotly.express as px
+from db_manager import get_db_connection, DatabaseError, execute_query
+from typing import Tuple, Optional
 
 
 # Define the paths
@@ -57,82 +59,50 @@ def save_config(config):
         json.dump(config, f, indent=2)
 
 
-def ensure_table_exists():
-    """Check if the timelog table exists, and initialize the database if it does not."""
+def load_data() -> pd.DataFrame:
+    """Query all the data from database and return as DataFrame."""
     try:
-        with sqlite3.connect(get_db_path()) as conn:
-            c = conn.cursor()
-            c.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='timelog'"
-            )
-            if not c.fetchone():
-                init_db()
-    except sqlite3.Error as e:
-        print(f"An error occurred while checking the table existence: {e}")
+        query = "SELECT * FROM timelog ORDER BY start_time"
+        with get_db_connection() as conn:
+            df = pd.read_sql_query(query, conn)
+            df["start_time"] = pd.to_datetime(df["start_time"])
+            df["end_time"] = pd.to_datetime(df["end_time"])
+            return df
+    except DatabaseError as e:
+        print(f"Error loading data: {e}")
+        return pd.DataFrame()  # Return empty DataFrame on error
 
 
-def init_db():
-    """Initialize the database by creating necessary tables if they do not exist."""
-    try:
-        Path(get_db_path()).parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(get_db_path()) as conn:
-            c = conn.cursor()
-            c.execute("""CREATE TABLE IF NOT EXISTS timelog
-                         (id INTEGER PRIMARY KEY,
-                          category TEXT,
-                          activity TEXT,
-                          task TEXT,
-                          start_time TIMESTAMP,
-                          end_time TIMESTAMP,
-                          duration INTEGER,
-                          notes TEXT)""")
-            conn.commit()
-    except sqlite3.Error as e:
-        print(f"An error occurred while initializing the database: {e}")
-    except OSError as e:
-        print(f"An error occurred while creating the directory: {e}")
-
-
-def load_data():
-    """Query all the data from database"""
-    query = """
-    SELECT *
-    FROM timelog
-    ORDER BY start_time
-    """
-    with sqlite3.connect(get_db_path()) as conn:
-        df = pd.read_sql_query(query, conn)
-        df["start_time"] = pd.to_datetime(df["start_time"])
-        df["end_time"] = pd.to_datetime(df["end_time"])
-    return df
-
-
-def validate_input(input_string, max_length=100):
+def validate_input(input_string: Optional[str], max_length: int = 100) -> Optional[str]:
     """Validate and sanitize input."""
-    if not input_string or not isinstance(input_string, str):
-        raise ValueError("Input must be a non-empty string")
+    if input_string is None:
+        return None
+    if not isinstance(input_string, str):
+        raise ValueError("Input must be a string")
     if len(input_string) > max_length:
         raise ValueError(f"Input exceeds maximum length of {max_length} characters")
-    return re.sub(r"[^\w\s-]", "", input_string)
+    sanitized = re.sub(r"[^\w\s-]", "", input_string)
+    if not sanitized:
+        raise ValueError("Input must contain valid characters")
+    return sanitized
 
 
-def get_date_range(date_range):
+def get_date_range(date_range: str) -> Tuple[datetime, datetime]:
     """Get the start and end dates based on the date range."""
     today = datetime.now().date()
     if date_range == "d":
-        start_date = today
-        end_date = today
+        return today, today
     elif date_range == "w":
         start_date = today - timedelta(days=today.weekday())
-        end_date = start_date + timedelta(days=6)
+        return start_date, start_date + timedelta(days=6)
     elif date_range == "m":
         start_date = today.replace(day=1)
         next_month = today.replace(day=28) + timedelta(days=4)
         end_date = next_month - timedelta(days=next_month.day)
+        return start_date, end_date
     elif date_range == "y":
-        end_date = datetime.now().date()
-        start_date = end_date.replace(month=1, day=1)
-    return start_date, end_date
+        return today.replace(month=1, day=1), today
+    raise ValueError(f"Invalid date range: {date_range}")
 
 
 def df_by_range(df, date_range):
