@@ -27,7 +27,7 @@ clockwork stores its data in a SQLite database located in a .clockwork directory
 The command `clockin` is how you start tracking the time.
 You must provide a category, activity, and a task. Optionally, add notes with `--notes`.
 ```
-python clockwork.py clockin <category> <activity> <task> [--notes "optional notes"]
+clockin [category] [activity] [task] [--notes "optional notes"]
 ```
 Examples:
 ```
@@ -40,18 +40,14 @@ clockin work research image-preprocessing-tools
 
 The clock is stopped with `clockout` command. Provide the activity, and again, optionally add notes.
 ```
-python clockwork.py clockout <activity> [--notes "optional notes"]
-```
-Example:
-```
-clockout physics --notes "finished exercise set 3"
+clockout [activity] [--notes "optional notes"]
 ```
 
 ### clocklog
 
 Displays the log of your tracked hours. A date range can be specified using a single-letter code.
 ```
-python clockwork.py clocklog [date_range]
+clocklog [date_range]
 ```
 Date range options:
 
@@ -67,27 +63,32 @@ If no date range is specified, it defaults to weekly.
 
 Displays the total duration for each category. A date range can be specified using a single-letter code.
 ```
-python clockwork.py clocksum [date_range]
+clocksum [date_range]
 ```
 Same date range options as clocklog. If no date range is specified, it defaults to weekly.
 
 
 ### clockvis
 
-Saves a visualization of your hours for a specified date range. You must provide start and end dates in YYYY-MM-DD format.
-In addition, a category can be specified with `--category`.
+Visualize your time distribution for a specified date range. Uses a single-letter code for the date range:
+- `d`: daily (today)
+- `w`: weekly (current week)
+- `m`: monthly (current month)
+- `y`: yearly (current year)
+
+Optionally specify a `category` to see breakdown of activities within that category.
 
 In a `config.json` file, it is possible to create a COLOR_DICT to specify what colors you prefer for different categories.
 ```
-python clockwork.py clockvis --start-date <YYYY-MM-DD> --end-date <YYYY-MM-DD> [--category <category>]
+clockvis [date_range] [category]
 ```
 
 ### clockcsv
 
 Download your logs in CSV format with a specified date range. You must provide start and end dates in YYYY-MM-DD format.
-In addition, a category can be specified with `--category`.
+In addition, a category can be specified.
 ```
-python clockwork.py clockcsv <start-date> <end-date> [--category <category>]
+clockcsv [date_range] [category]
 ```
 
 
