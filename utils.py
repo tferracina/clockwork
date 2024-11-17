@@ -33,15 +33,19 @@ def load_config():
         "color_dict": {},
         "database": {"path": str(DB_FILE)},
         "default_date_range": "w",
-        "csv_export": {"delimiter": ",", "quotechar": "\"", "encoding": "utf-8"},
-        "visualization": {"default_chart_type": "pie", "figure_size": [10, 7], "dpi": 100},
+        "csv_export": {"delimiter": ",", "quotechar": '"', "encoding": "utf-8"},
+        "visualization": {
+            "default_chart_type": "pie",
+            "figure_size": [10, 7],
+            "dpi": 100,
+        },
         "time_format": "%Y-%m-%d %H:%M:%S",
         "categories": [],
         "notification": {"enable": False, "reminder_interval": 30},
-        "backup": {"enable": False, "interval_days": 7, "max_backups": 5}
+        "backup": {"enable": False, "interval_days": 7, "max_backups": 5},
     }
     if CONFIG_FILE.exists():
-        with open(CONFIG_FILE, 'r', encoding="utf8") as f:
+        with open(CONFIG_FILE, "r", encoding="utf8") as f:
             user_config = json.load(f)
         default_config.update(user_config)
     return default_config
@@ -49,7 +53,7 @@ def load_config():
 
 def save_config(config):
     """Save configuration to JSON file."""
-    with open(CONFIG_FILE, 'w', encoding="utf8") as f:
+    with open(CONFIG_FILE, "w", encoding="utf8") as f:
         json.dump(config, f, indent=2)
 
 
@@ -58,7 +62,9 @@ def ensure_table_exists():
     try:
         with sqlite3.connect(get_db_path()) as conn:
             c = conn.cursor()
-            c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='timelog'")
+            c.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='timelog'"
+            )
             if not c.fetchone():
                 init_db()
     except sqlite3.Error as e:
@@ -71,7 +77,7 @@ def init_db():
         Path(get_db_path()).parent.mkdir(parents=True, exist_ok=True)
         with sqlite3.connect(get_db_path()) as conn:
             c = conn.cursor()
-            c.execute('''CREATE TABLE IF NOT EXISTS timelog
+            c.execute("""CREATE TABLE IF NOT EXISTS timelog
                          (id INTEGER PRIMARY KEY,
                           category TEXT,
                           activity TEXT,
@@ -79,7 +85,7 @@ def init_db():
                           start_time TIMESTAMP,
                           end_time TIMESTAMP,
                           duration INTEGER,
-                          notes TEXT)''')
+                          notes TEXT)""")
             conn.commit()
     except sqlite3.Error as e:
         print(f"An error occurred while initializing the database: {e}")
@@ -96,8 +102,8 @@ def load_data():
     """
     with sqlite3.connect(get_db_path()) as conn:
         df = pd.read_sql_query(query, conn)
-        df['start_time'] = pd.to_datetime(df['start_time'])
-        df['end_time'] = pd.to_datetime(df['end_time'])
+        df["start_time"] = pd.to_datetime(df["start_time"])
+        df["end_time"] = pd.to_datetime(df["end_time"])
     return df
 
 
@@ -107,7 +113,7 @@ def validate_input(input_string, max_length=100):
         raise ValueError("Input must be a non-empty string")
     if len(input_string) > max_length:
         raise ValueError(f"Input exceeds maximum length of {max_length} characters")
-    return re.sub(r'[^\w\s-]', '', input_string)
+    return re.sub(r"[^\w\s-]", "", input_string)
 
 
 def get_date_range(date_range):
@@ -133,10 +139,13 @@ def df_by_range(df, date_range):
     """Filter the DataFrame by the given date range."""
     start_date, end_date = get_date_range(date_range)
 
-    df['start_time'] = pd.to_datetime(df['start_time'])
-    df['end_time'] = pd.to_datetime(df['end_time'])
+    df["start_time"] = pd.to_datetime(df["start_time"])
+    df["end_time"] = pd.to_datetime(df["end_time"])
 
-    return df[(df['start_time'].dt.date >= start_date) & (df['start_time'].dt.date <= end_date)]
+    return df[
+        (df["start_time"].dt.date >= start_date)
+        & (df["start_time"].dt.date <= end_date)
+    ]
 
 
 def minute_to_string(x):
@@ -146,12 +155,12 @@ def minute_to_string(x):
 
 def open_file(filepath):
     """Open file depending on platform."""
-    if sys.platform.startswith('darwin'):  # macOS
-        subprocess.call(('open', filepath))
-    elif sys.platform.startswith('win'):   # Windows
+    if sys.platform.startswith("darwin"):  # macOS
+        subprocess.call(("open", filepath))
+    elif sys.platform.startswith("win"):  # Windows
         os.startfile(filepath)
     else:  # linux variants
-        subprocess.call(('xdg-open', filepath))
+        subprocess.call(("xdg-open", filepath))
 
 
 def generate_random_color():
@@ -167,35 +176,53 @@ def make_pie_chart(df, date_range=None, category=None):
     else:
         date_subdf = df
 
-    start_date = date_subdf['start_time'].min().date()
-    end_date = date_subdf['end_time'].max().date()
+    start_date = date_subdf["start_time"].min().date()
+    end_date = date_subdf["end_time"].max().date()
 
     if category is not None:
-        cat_subdf = date_subdf[date_subdf['category'] == category]
+        cat_subdf = date_subdf[date_subdf["category"] == category]
     else:
         cat_subdf = date_subdf
 
     color_scale = px.colors.qualitative.Plotly
 
     if category is None:
-        pie_fig = px.pie(cat_subdf, names='category', values='duration', color='category', color_discrete_sequence=color_scale)
+        pie_fig = px.pie(
+            cat_subdf,
+            names="category",
+            values="duration",
+            color="category",
+            color_discrete_sequence=color_scale,
+        )
     else:
-        pie_fig = px.pie(cat_subdf, names='activity', values='duration', color='activity', color_discrete_sequence=color_scale)
+        pie_fig = px.pie(
+            cat_subdf,
+            names="activity",
+            values="duration",
+            color="activity",
+            color_discrete_sequence=color_scale,
+        )
 
-    pie_fig.update_traces(textposition='inside',
-                          direction='clockwise',
-                          hole=0.3,
-                          textinfo='percent+label')
+    pie_fig.update_traces(
+        textposition="inside", direction="clockwise", hole=0.3, textinfo="percent+label"
+    )
 
-    total_time = cat_subdf['duration'].sum()
+    total_time = cat_subdf["duration"].sum()
     formatted_tt = minute_to_string(int(total_time))
 
-
-    pie_fig.update_layout(uniformtext_minsize=12,
-                          uniformtext_mode='hide',
-                          title=dict(text=f'{"breakdown" if category is None else f"{category} Breakdown"} from {start_date} to {end_date}', x=0.5),
-                          annotations=[dict(text=formatted_tt, x=0.5, y=0.5, font_size=12, showarrow=False)]
-                          )
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.html', mode='w', encoding='utf-8') as tmpfile:
+    pie_fig.update_layout(
+        uniformtext_minsize=12,
+        uniformtext_mode="hide",
+        title=dict(
+            text=f'{"breakdown" if category is None else f"{category} Breakdown"} from {start_date} to {end_date}',
+            x=0.5,
+        ),
+        annotations=[
+            dict(text=formatted_tt, x=0.5, y=0.5, font_size=12, showarrow=False)
+        ],
+    )
+    with tempfile.NamedTemporaryFile(
+        delete=False, suffix=".html", mode="w", encoding="utf-8"
+    ) as tmpfile:
         pie_fig.write_html(tmpfile.name)
         return tmpfile.name
