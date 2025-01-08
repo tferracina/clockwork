@@ -120,16 +120,16 @@ def clockout(activity, notes=None):
 
 
 @click.command()
-@click.argument("date_range", type=click.Choice(RANGE.keys()), default="w")
+@click.argument("date_range", type=click.Choice(RANGE.keys()), default="m")
 def clocklog(date_range):
-    """Generate a weekly report for the activities between the given dates"""
+    """Generate a report for activities between the given dates."""
     try:
         start_date, end_date = get_date_range(date_range)
 
         query = """
             SELECT
                 category,
-                -- Convert to 1 (Monday) through 7 (Sunday)
+                strftime('%W', start_time) AS week_of_year, -- Week of the year
                 CASE CAST(strftime('%w', start_time) AS INTEGER)
                     WHEN 0 THEN 7  -- Sunday becomes 7
                     ELSE CAST(strftime('%w', start_time) AS INTEGER)
@@ -137,18 +137,16 @@ def clocklog(date_range):
                 COALESCE(SUM(duration), 0) as total_duration
             FROM timelog
             WHERE date(start_time) BETWEEN ? AND ?
-            GROUP BY category, day_of_week
-            ORDER BY category, day_of_week
+            GROUP BY category, week_of_year, day_of_week
+            ORDER BY week_of_year, category, day_of_week
         """
         result = execute_query(query, (start_date, end_date))
 
         if result:
-            # Create a nested dictionary to store the data
-            week_data = defaultdict(lambda: defaultdict(int))
-            for category, day, duration in result:
-                week_data[int(day)][category] = int(duration)
+            week_data = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+            for category, week, day, duration in result:
+                week_data[int(week)][int(day)][category] = int(duration)
 
-            # Prepare the table data
             headers = [
                 "MONDAY",
                 "TUESDAY",
@@ -158,51 +156,40 @@ def clocklog(date_range):
                 "SATURDAY",
                 "SUNDAY",
             ]
-            table = []
 
-            # Find all unique categories
-            all_categories = set(
-                category
-                for day_data in week_data.values()
-                for category in day_data.keys()
-            )
+            # Prepare the report for each week
+            for week in sorted(week_data.keys()):
+                print(f"\nWeek {week+1}:")
 
-            # Build rows with correct day mapping (1 = Monday through 7 = Sunday)
-            for category in sorted(all_categories):
-                row = []
-                for day in range(1, 8):  # 1 (Monday) to 7 (Sunday)
-                    duration = week_data[day].get(category, 0)
-                    if duration > 0:
-                        row.append(f"{category}:\n{str(timedelta(seconds=duration))}")
-                    else:
-                        row.append("")
-                table.append(row)
+                # Find all unique categories for this week
+                all_categories = set(
+                    category
+                    for day_data in week_data[week].values()
+                    for category in day_data.keys()
+                )
 
-            print(
-                f"\nWeekly report for {RANGE[date_range]} ({start_date} to {end_date}):"
-            )
-            print(tabulate(table, headers=headers, tablefmt="grid"))
+                table = []
+                for category in sorted(all_categories):
+                    row = []
+                    for day in range(1, 8):
+                        duration = week_data[week][day].get(category, 0)
+                        if duration > 0:
+                            row.append(f"{category}:\n{str(timedelta(seconds=duration))}")
+                        else:
+                            row.append("")
+                    table.append(row)
 
-            # Print totals
-            daily_totals = []
-            for day in range(1, 8):
-                total = sum(week_data[day].values())
-                if total > 0:
-                    daily_totals.append(str(timedelta(seconds=total)))
-                else:
-                    daily_totals.append("")
+                print(tabulate(table, headers=headers, tablefmt="grid"))
 
-            print("\nDaily Totals:")
-            print(tabulate([daily_totals], headers=headers, tablefmt="grid"))
-
-            # Print grand total
+            # Grand total for the entire month
             grand_total = sum(
                 duration
-                for day_data in week_data.values()
+                for week_data_week in week_data.values()
+                for day_data in week_data_week.values()
                 for duration in day_data.values()
             )
             if grand_total > 0:
-                print(f"\nTotal time: {str(timedelta(seconds=grand_total))}")
+                print(f"\nTotal time for {RANGE[date_range]} ({start_date} to {end_date}): {str(timedelta(seconds=grand_total))}")
 
         else:
             print("No activities found in the specified date range.")
@@ -210,6 +197,7 @@ def clocklog(date_range):
         print(f"Database error while generating report: {e}")
     except ValueError as e:
         print(f"Invalid input: {e}")
+
 
 
 @click.command()

@@ -13,8 +13,10 @@ logger = logging.getLogger(__name__)
 
 class DatabaseError(Exception):
     """Custom exception for database-related errors."""
+    def __init__(self, message: str, original_exception: Optional[Exception] = None):
+        super().__init__(message)
+        self.original_exception = original_exception
 
-    pass
 
 
 @contextmanager
@@ -103,10 +105,7 @@ def init_db() -> None:
                     ON timelog(category)
                 """)
                 conn.commit()
-                logger.info("Database initialized successfully at %s", db_path)
-
-        # Print initial status after initialization
-        print_db_status()
+                #logger.info("Database initialized successfully at %s", db_path)
 
     except (sqlite3.Error, OSError) as e:
         logger.error("Database initialization error: %s", str(e))

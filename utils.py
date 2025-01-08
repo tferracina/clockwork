@@ -9,10 +9,11 @@ import sys
 import random
 import json
 import tempfile
+from typing import Tuple, Optional
 import pandas as pd
 import plotly.express as px
+
 from db_manager import get_db_connection, DatabaseError
-from typing import Tuple, Optional
 
 # Define the paths
 home_dir = Path.home()
